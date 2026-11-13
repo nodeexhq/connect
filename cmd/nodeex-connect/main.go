@@ -292,6 +292,16 @@ func cmdOpen(args []string) error {
 	if err := call(ctx, s, "POST", "/v1/leases/"+leaseID+"/overlay-key", nil, &key); err != nil {
 		return err
 	}
+	// Register this computer's key for the lease, so the machine lets it
+	// in. A node that does not give each lease its own machine ignores it.
+	registered := false
+	if pub, err := ensureSSHKey(*dir); err != nil {
+		log.Printf("could not prepare an SSH key: %v", err)
+	} else if err := call(ctx, s, "PUT", "/v1/leases/"+leaseID+"/ssh-keys", map[string]any{"keys": []string{pub}}, nil); err != nil {
+		log.Printf("could not register this computer's SSH key: %v", err)
+	} else {
+		registered = true
+	}
 	node, err := netip.ParseAddr(key.NodeAddr)
 	if err != nil {
 		return errors.New("platform returned an invalid machine address")
@@ -363,7 +373,12 @@ func cmdOpen(args []string) error {
 		return err
 	}
 	log.Printf("ready; leave this running while you use the machine, and press Ctrl+C to disconnect")
-	log.Printf("  ssh:             ssh -p %d <user>@127.0.0.1", *sshPort)
+	if registered {
+		log.Printf("  ssh:             ssh -i %s -p %d <user>@127.0.0.1", sshKeyPath(*dir), *sshPort)
+		log.Printf("                   (this computer's key is registered for the lease; the machine accepts it within about 15 seconds)")
+	} else {
+		log.Printf("  ssh:             ssh -p %d <user>@127.0.0.1", *sshPort)
+	}
 	log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
 	if *openVNC {
 		if err := openDesktop(ctx, "127.0.0.1", *vncPort); err != nil {
