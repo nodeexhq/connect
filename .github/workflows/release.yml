@@ -1,0 +1,47 @@
+name: release
+
+# Pushing a tag such as v0.1.0 builds Connect for every system and publishes
+# the archives as a release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./...
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir dist
+          for t in darwin/arm64 darwin/amd64 windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
+            os=${t%/*}; arch=${t#*/}
+            name=$os; [ "$os" = darwin ] && name=macos
+            cpu=$arch; [ "$arch" = amd64 ] && cpu=x64
+            exe=nodeex-connect; [ "$os" = windows ] && exe=nodeex-connect.exe
+            dir=dist/nodeex-connect
+            rm -rf "$dir" && mkdir "$dir"
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$TAG" -o "$dir/$exe" ./cmd/nodeex-connect
+            cp LICENSE README.md "$dir/"
+            base="nodeex-connect_${TAG}_${name}_${cpu}"
+            if [ "$os" = windows ]; then (cd dist && zip -qr "$base.zip" nodeex-connect); else tar -C dist -czf "dist/$base.tar.gz" nodeex-connect; fi
+          done
+          rm -rf dist/nodeex-connect
+          cd dist && sha256sum * > SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --prerelease --title "NodeEx Connect $TAG" \
+            --notes "Unsigned builds. Verify the download against SHA256SUMS. macOS and Windows will ask before running it; see the README. The Windows builds are untested on real hardware."
