@@ -44,4 +44,4 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" dist/* --prerelease --title "NodeEx Connect $TAG" \
-            --notes "Unsigned builds. Verify the download against SHA256SUMS. macOS and Windows will ask before running it; see the README. The Windows builds are untested on real hardware."
+            --notes "The macOS builds are signed and notarized shortly after the release appears. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against SHA256SUMS."

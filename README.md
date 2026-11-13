@@ -10,8 +10,9 @@ desktop to a machine you are renting.
 ## Status
 
 Early access. Connect is a command-line program. It builds for macOS, Windows and Linux on x64 and ARM; macOS and
-Linux have been run, and **the Windows builds have not been tested on real hardware yet**. Release builds are **not
-signed**, so macOS and Windows will ask before running a downloaded binary; building from source avoids that.
+Linux have been run, and **the Windows builds have not been tested on real hardware yet**. The macOS release builds
+are signed with a Developer ID and notarized by Apple. The Windows and Linux builds are **not signed**: Windows will
+ask before running a downloaded binary, and building from source avoids that.
 
 ## Build
 
