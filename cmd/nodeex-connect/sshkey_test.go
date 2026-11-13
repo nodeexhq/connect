@@ -36,3 +36,25 @@ func TestEnsureSSHKey(t *testing.T) {
 		t.Errorf("private key mode %v, want 0600", info.Mode().Perm())
 	}
 }
+
+func TestNewPassword(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 50; i++ {
+		p, err := newPassword()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p) != 23 || p[5] != '-' || p[11] != '-' || p[17] != '-' {
+			t.Fatalf("password %q is not four groups of five", p)
+		}
+		for _, r := range p {
+			if r == '0' || r == 'o' || r == '1' || r == 'l' || r == 'i' {
+				t.Fatalf("password %q has a character that is easy to misread", p)
+			}
+		}
+		if seen[p] {
+			t.Fatalf("password %q came up twice", p)
+		}
+		seen[p] = true
+	}
+}

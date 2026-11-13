@@ -373,13 +373,31 @@ func cmdOpen(args []string) error {
 		return err
 	}
 	log.Printf("ready; leave this running while you use the machine, and press Ctrl+C to disconnect")
-	if registered {
-		log.Printf("  ssh:             ssh -i %s -p %d <user>@127.0.0.1", sshKeyPath(*dir), *sshPort)
-		log.Printf("                   (this computer's key is registered for the lease; the machine accepts it within about 15 seconds)")
-	} else {
+	if !registered {
 		log.Printf("  ssh:             ssh -p %d <user>@127.0.0.1", *sshPort)
+		log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
+	} else {
+		// The node installs the key with its next heartbeat, so the machine
+		// takes a moment to let it in.
+		log.Printf("  waiting for the machine to accept this computer's key")
+		password, err := prepareMachine(ctx, *dir, leaseID, *sshPort, 90*time.Second)
+		switch {
+		case err == nil:
+			log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
+			log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
+			log.Printf("                   user %s, password %s", machineAccount, password)
+			log.Printf("  The machine is yours for this lease, with sudo, and is erased when the lease ends.")
+		case errors.Is(err, errNoMachine):
+			log.Printf("  This node did not accept the key: it has not given the lease a machine of its own.")
+			log.Printf("  ssh:             ssh -p %d <user>@127.0.0.1", *sshPort)
+			log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
+		case ctx.Err() != nil:
+			return nil
+		default:
+			log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
+			log.Printf("  remote desktop:  %s (no password could be set: %v)", desktopHint("127.0.0.1", *vncPort), err)
+		}
 	}
-	log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
 	if *openVNC {
 		if err := openDesktop(ctx, "127.0.0.1", *vncPort); err != nil {
 			log.Printf("could not open the remote desktop: %v", err)
