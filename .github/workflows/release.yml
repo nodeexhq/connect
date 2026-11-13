@@ -1,7 +1,11 @@
 name: release
 
-# Pushing a tag such as v0.1.0 builds Connect for every system and publishes
-# the archives as a release.
+# Pushing a tag such as v0.2.0 builds Connect for every system, signs and
+# notarizes the macOS builds, and publishes the archives as a release.
+#
+# The signing material is in the organization's secrets:
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD   the Developer ID certificate
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  for Apple's notary service
 on:
   push:
     tags: ["v*"]
@@ -11,17 +15,29 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.ref_name }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: go test -count=1 ./...
+
+      - name: Signing certificate
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: echo "SIGN_IDENTITY=$(scripts/ci-signing.sh)" >> "$GITHUB_ENV"
+
       - name: Build
         env:
           CGO_ENABLED: "0"
-          TAG: ${{ github.ref_name }}
         run: |
           mkdir dist
           for t in darwin/arm64 darwin/amd64 windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
@@ -32,16 +48,15 @@ jobs:
             dir=dist/nodeex-connect
             rm -rf "$dir" && mkdir "$dir"
             GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$TAG" -o "$dir/$exe" ./cmd/nodeex-connect
+            [ "$os" != darwin ] || scripts/sign-binary.sh "$dir/$exe"
             cp LICENSE README.md "$dir/"
             base="nodeex-connect_${TAG}_${name}_${cpu}"
             if [ "$os" = windows ]; then (cd dist && zip -qr "$base.zip" nodeex-connect); else tar -C dist -czf "dist/$base.tar.gz" nodeex-connect; fi
           done
           rm -rf dist/nodeex-connect
-          cd dist && sha256sum * > SHA256SUMS
+          (cd dist && shasum -a 256 * > SHA256SUMS)
+
       - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" dist/* --prerelease --title "NodeEx Connect $TAG" \
-            --notes "The macOS builds are signed and notarized shortly after the release appears. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against SHA256SUMS."
+            --notes "The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against SHA256SUMS."
