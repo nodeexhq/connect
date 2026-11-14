@@ -54,7 +54,7 @@ reads `$NODEEX_PASSWORD`) and never stores it. Either way `login` keeps a sessio
 directory.
 
 Official builds are published only on this repository's releases page and on https://nodeex.com/download. The
-macOS builds are signed with the Developer ID `HE PANG (7GS265YM4T)` and notarized by Apple; every release has a
+macOS builds are signed with NodeEx's Developer ID (team ID `7GS265YM4T`) and notarized by Apple; every release has a
 `SHA256SUMS` file. See [how to check a download](https://nodeex.com/security#software).
 
 The gate, lease token, overlay and tunnel code is shared with the node side and lives in
