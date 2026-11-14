@@ -26,6 +26,24 @@ type machineAccess struct {
 	// for. Connect chose it and set it in the machine; it is kept here and
 	// nowhere else.
 	DesktopPassword string `json:"desktop_password"`
+	// CheckedAt is when this computer last checked the machine.
+	CheckedAt time.Time `json:"checked_at,omitempty"`
+}
+
+func loadAccess(dir, leaseID string) machineAccess {
+	var a machineAccess
+	if b, err := os.ReadFile(accessPath(dir, leaseID)); err == nil {
+		json.Unmarshal(b, &a)
+	}
+	return a
+}
+
+func saveAccess(dir, leaseID string, a machineAccess) error {
+	b, _ := json.Marshal(a)
+	if err := os.MkdirAll(filepath.Dir(accessPath(dir, leaseID)), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(accessPath(dir, leaseID), b, 0o600)
 }
 
 func accessPath(dir, leaseID string) string { return filepath.Join(dir, "leases", leaseID+".json") }
@@ -131,11 +149,9 @@ func prepareMachine(ctx context.Context, dir, leaseID string, port int, wait tim
 	if out, err := session.CombinedOutput(set); err != nil {
 		return "", fmt.Errorf("could not set the machine's password: %v %s", err, strings.TrimSpace(string(out)))
 	}
-	b, _ := json.Marshal(machineAccess{DesktopPassword: password})
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return password, err
-	}
-	return password, os.WriteFile(path, b, 0o600)
+	a := loadAccess(dir, leaseID)
+	a.DesktopPassword = password
+	return password, saveAccess(dir, leaseID, a)
 }
 
 var errNoMachine = errors.New("the machine did not accept this computer's key")

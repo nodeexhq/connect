@@ -15,6 +15,8 @@ final class Connection {
     let process: CoreProcess
     var ready: CoreEvent?
     var path: String?
+    /// The result of checking the machine against what was ordered.
+    var check: String?
     /// What to open once the machine is ready.
     var pending: [OpenMode] = []
 
@@ -196,6 +198,16 @@ final class ConnectModel: ObservableObject {
                 let modes = c.pending
                 c.pending = []
                 modes.forEach { self.hand(c, $0) }
+            case "check":
+                if e.verdict == "ok" {
+                    c.check = "Matches what you ordered"
+                } else {
+                    let problems = e.problems ?? []
+                    c.check = "Does not match what you ordered"
+                    self.alert("This machine does not match what you ordered",
+                               problems.map { "• " + $0 }.joined(separator: "\n")
+                               + "\n\nNodeEx has been told. If it is not what you ordered, write to hello@nodeex.com about a refund.")
+                }
             case "path":
                 if e.direct == true {
                     c.path = "direct" + (e.latencyMs.map { String(format: ", %.0f ms", $0) } ?? "")
@@ -463,6 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let conn {
             sub.addItem(.separator())
             if let path = conn.path { sub.addItem(disabled("Connection: \(path)")) }
+            if let check = conn.check { sub.addItem(disabled("Machine check: \(check)")) }
             if let r = conn.ready {
                 if let account = r.account { sub.addItem(disabled("Account: \(account)")) }
                 if r.password != nil {

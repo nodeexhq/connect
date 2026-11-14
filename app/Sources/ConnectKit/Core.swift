@@ -16,9 +16,12 @@ public struct CoreEvent: Decodable, Equatable {
     public var relay: String?
     public var latencyMs: Double?
     public var message: String?
+    /// A machine check: "ok" or "mismatch", and what did not match.
+    public var verdict: String?
+    public var problems: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case event, account, password, note, direct, relay, message
+        case event, account, password, note, direct, relay, message, verdict, problems
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
     }

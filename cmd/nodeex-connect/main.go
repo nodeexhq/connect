@@ -307,6 +307,7 @@ func cmdOpen(args []string) error {
 	vncPort := fs.Int("vnc-port", 15900, "local port for remote desktop")
 	openVNC := fs.Bool("open-vnc", false, "open the remote desktop viewer once connected")
 	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
+	noCheck := fs.Bool("no-check", false, "do not check the machine against what was ordered")
 	// Accept the lease ID before or after the flags.
 	var leaseID string
 	if len(args) > 0 && len(args[0]) > 0 && args[0][0] != '-' {
@@ -445,6 +446,14 @@ func cmdOpen(args []string) error {
 		}
 		if ctx.Err() == nil {
 			emit("ready", ready)
+		}
+		if err == nil && !*noCheck {
+			// In the background: the machine is usable meanwhile.
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				checkLease(ctx, s, *dir, leaseID, *sshPort)
+			}()
 		}
 		switch {
 		case err == nil:

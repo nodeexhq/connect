@@ -21,6 +21,9 @@ final class ConnectKitTests: XCTestCase {
         XCTAssertEqual(e?.sshPort, 50022)
         XCTAssertEqual(e?.password, "p w")
         XCTAssertNil(CoreEvent.parse("not json"))
+        let c = CoreEvent.parse(#"{"event":"check","verdict":"mismatch","problems":["8 GB of memory, the node claims 12 GB"]}"#)
+        XCTAssertEqual(c?.verdict, "mismatch")
+        XCTAssertEqual(c?.problems?.count, 1)
     }
 
     func testDesktopURL() {
