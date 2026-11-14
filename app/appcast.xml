@@ -7,12 +7,12 @@
   <channel>
     <title>NodeEx Connect</title>
     <item>
-      <title>0.1.4</title>
-      <pubDate>Sat, 14 Nov 2026 16:50:30 +0000</pubDate>
-      <sparkle:version>10</sparkle:version>
-      <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
+      <title>0.1.5</title>
+      <pubDate>Sat, 14 Nov 2026 17:36:58 +0000</pubDate>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/nodeexhq/connect/releases/download/v0.1.4/NodeEx-Connect-v0.1.4.dmg" type="application/octet-stream" sparkle:edSignature="UaDbVnyh5W3YiMVWZ+3KMjwoKImKK1+skknO689a9U6tkPh2vqRwZEHSN1z9PA38gCjQVwBkPjOjx/EDzATfBg==" length="22261316" />
+      <enclosure url="https://github.com/nodeexhq/connect/releases/download/v0.1.5/NodeEx-Connect-v0.1.5.dmg" type="application/octet-stream" sparkle:edSignature="TNn4xeLnyezlzjM/dn+depSEuiKG/Bxgn0sKtixg+XE4IcX6MRjgXTBiGEqmgcBOeomRdUqN4Urt9CZwsPseBA==" length="22286005" />
     </item>
   </channel>
 </rss>
