@@ -1,17 +1,21 @@
 name: release
 
 # Pushing a tag such as v0.2.0 builds Connect for every system, signs and
-# notarizes the macOS builds, and publishes the archives as a release.
+# notarizes the macOS builds and the NodeEx Connect app, publishes them as a
+# release, and points the app's update feed at the new version.
 #
 # The signing material is in the organization's secrets:
 #   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD   the Developer ID certificate
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  for Apple's notary service
+#   SPARKLE_PRIVATE_KEY                          signs the app's updates
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
+
+concurrency: release
 
 jobs:
   release:
@@ -24,10 +28,14 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The app's build number is the count of commits.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: go test -count=1 ./...
+      - run: swift test --package-path app
 
       - name: Signing certificate
         env:
@@ -56,7 +64,28 @@ jobs:
           rm -rf dist/nodeex-connect
           (cd dist && shasum -a 256 * > SHA256SUMS)
 
+      - name: The app
+        run: VERSION="$TAG" app/scripts/package.sh
+
       - name: Publish
         run: |
           gh release create "$TAG" dist/* --prerelease --title "NodeEx Connect $TAG" \
-            --notes "The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against SHA256SUMS."
+            --notes "NodeEx Connect for macOS (the app, for Apple silicon and Intel) and the command-line client for macOS, Windows and Linux. The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against the checksums."
+
+      - name: Update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          SPARKLE_KEY_FILE="$RUNNER_TEMP/sparkle.key" app/scripts/publish.sh "$TAG"
+          rm -f "$RUNNER_TEMP/sparkle.key"
+          # Installed apps read the feed from the main branch.
+          cp app/appcast.xml "$RUNNER_TEMP/appcast.xml"
+          git fetch -q origin main
+          git checkout -q -f -B main origin/main
+          cp "$RUNNER_TEMP/appcast.xml" app/appcast.xml
+          git config user.name "NodeEx"
+          git config user.email "hello@nodeex.com"
+          git add app/appcast.xml
+          git commit -q -m "Update feed: $TAG"
+          git push -q origin main

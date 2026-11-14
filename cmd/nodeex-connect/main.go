@@ -133,6 +133,10 @@ func main() {
 	switch os.Args[1] {
 	case "login":
 		err = cmdLogin(os.Args[2:])
+	case "logout":
+		err = cmdLogout(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
 	case "leases":
 		err = cmdLeases(os.Args[2:])
 	case "open":
@@ -143,13 +147,14 @@ func main() {
 		usage()
 	}
 	if err != nil {
+		emit("error", map[string]any{"message": err.Error()})
 		fmt.Fprintln(os.Stderr, "nodeex-connect:", err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: nodeex-connect <login|leases|open|version> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: nodeex-connect <login|logout|status|leases|open|version> [flags]")
 	os.Exit(2)
 }
 
@@ -159,6 +164,7 @@ func cmdLogin(args []string) error {
 	email := fs.String("email", "", "sign in with email and password instead of the browser")
 	noBrowser := fs.Bool("no-browser", false, "print the sign-in address instead of opening a browser")
 	dir := fs.String("dir", defaultDir(), "state directory")
+	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
 	fs.Parse(args)
 	if *api == "" {
 		return errors.New("usage: nodeex-connect login [-no-browser] [-email YOU@EXAMPLE.COM]")
@@ -179,7 +185,11 @@ func cmdLogin(args []string) error {
 		}
 		token = t
 	}
-	return saveSession(*dir, session{API: *api, Token: token})
+	if err := saveSession(*dir, session{API: *api, Token: token}); err != nil {
+		return err
+	}
+	emit("signed_in", nil)
+	return nil
 }
 
 // passwordLogin is for a computer with no browser at hand. The password
@@ -214,7 +224,9 @@ func saveSession(dir string, s session) error {
 	if err := os.WriteFile(sessionPath(dir), b, 0o600); err != nil {
 		return err
 	}
-	fmt.Println("signed in")
+	if !eventsOn {
+		fmt.Println("signed in")
+	}
 	return nil
 }
 
@@ -230,6 +242,7 @@ type lease struct {
 func cmdLeases(args []string) error {
 	fs := flag.NewFlagSet("leases", flag.ExitOnError)
 	dir := fs.String("dir", defaultDir(), "state directory")
+	asJSON := fs.Bool("json", false, "print the leases as JSON")
 	fs.Parse(args)
 	s, err := loadSession(*dir)
 	if err != nil {
@@ -242,6 +255,12 @@ func cmdLeases(args []string) error {
 	defer cancel()
 	if err := call(ctx, s, "GET", "/v1/leases", nil, &res); err != nil {
 		return err
+	}
+	if *asJSON {
+		if res.Leases == nil {
+			res.Leases = []lease{}
+		}
+		return json.NewEncoder(os.Stdout).Encode(res.Leases)
 	}
 	if len(res.Leases) == 0 {
 		fmt.Println("no leases")
@@ -287,6 +306,7 @@ func cmdOpen(args []string) error {
 	sshPort := fs.Int("ssh-port", 10022, "local port for SSH")
 	vncPort := fs.Int("vnc-port", 15900, "local port for remote desktop")
 	openVNC := fs.Bool("open-vnc", false, "open the remote desktop viewer once connected")
+	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
 	// Accept the lease ID before or after the flags.
 	var leaseID string
 	if len(args) > 0 && len(args[0]) > 0 && args[0][0] != '-' {
@@ -314,6 +334,13 @@ func cmdOpen(args []string) error {
 		GatePort   int    `json:"gate_port"`
 	}
 	if err := call(ctx, s, "POST", "/v1/leases/"+leaseID+"/overlay-key", nil, &key); err != nil {
+		var ae *apiError
+		switch {
+		case errors.As(err, &ae) && ae.Code == "not_found":
+			return errors.New("this lease is not in the signed-in account")
+		case errors.As(err, &ae) && ae.Status == http.StatusUnauthorized:
+			return errors.New("not signed in, or the session has expired; sign in again")
+		}
 		return err
 	}
 	// Register this computer's key for the lease, so the machine lets it
@@ -378,26 +405,30 @@ func cmdOpen(args []string) error {
 	}
 
 	var wg sync.WaitGroup
-	forward := func(port int, service string) error {
+	// forward listens on a local port, 0 for any free one, and returns the
+	// port it got.
+	forward := func(port int, service string) (int, error) {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
-			return fmt.Errorf("local port %d: %w", port, err)
+			return 0, fmt.Errorf("local port %d: %w", port, err)
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			tunnel.Serve(ctx, ln, dialService(service), log.Printf)
 		}()
-		return nil
+		return ln.Addr().(*net.TCPAddr).Port, nil
 	}
-	if err := forward(*sshPort, leasetoken.ServiceSSH); err != nil {
+	if *sshPort, err = forward(*sshPort, leasetoken.ServiceSSH); err != nil {
 		return err
 	}
-	if err := forward(*vncPort, leasetoken.ServiceVNC); err != nil {
+	if *vncPort, err = forward(*vncPort, leasetoken.ServiceVNC); err != nil {
 		return err
 	}
+	emit("listening", map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort})
 	log.Printf("ready; leave this running while you use the machine, and press Ctrl+C to disconnect")
 	if !registered {
+		emit("ready", map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort})
 		log.Printf("  ssh:             ssh -p %d <user>@127.0.0.1", *sshPort)
 		log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
 	} else {
@@ -405,6 +436,16 @@ func cmdOpen(args []string) error {
 		// takes a moment to let it in.
 		log.Printf("  waiting for the machine to accept this computer's key")
 		password, err := prepareMachine(ctx, *dir, leaseID, *sshPort, 90*time.Second)
+		ready := map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort, "ssh_key": sshKeyPath(*dir)}
+		if err == nil {
+			ready["account"], ready["password"] = machineAccount, password
+		} else if !errors.Is(err, errNoMachine) && ctx.Err() == nil {
+			ready["account"] = machineAccount
+			ready["note"] = err.Error()
+		}
+		if ctx.Err() == nil {
+			emit("ready", ready)
+		}
 		switch {
 		case err == nil:
 			log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
@@ -438,6 +479,7 @@ func cmdOpen(args []string) error {
 			pctx, pcancel := context.WithTimeout(ctx, 10*time.Second)
 			if path, err := overlay.Probe(pctx, srv, node); err == nil {
 				log.Printf("path: %s", path)
+				emit("path", map[string]any{"direct": path.Direct, "relay": path.Relay, "latency_ms": path.Latency * 1000})
 				// Tell the platform how the connection is going: direct or
 				// relayed, and the latency. Nothing about what is sent
 				// over it. A failed report is not worth interrupting for.
@@ -454,5 +496,63 @@ func cmdOpen(args []string) error {
 		}
 	}()
 	wg.Wait()
+	emit("closed", nil)
+	return nil
+}
+
+// cmdLogout ends the session on the platform and forgets it here.
+func cmdLogout(args []string) error {
+	fs := flag.NewFlagSet("logout", flag.ExitOnError)
+	dir := fs.String("dir", defaultDir(), "state directory")
+	fs.Parse(args)
+	s, err := loadSession(*dir)
+	if err != nil {
+		return nil // not signed in: nothing to do
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	// A session the platform has already forgotten is no reason to keep
+	// the file.
+	call(ctx, s, "POST", "/v1/auth/logout", nil, nil)
+	if err := os.Remove(sessionPath(*dir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	fmt.Println("signed out")
+	return nil
+}
+
+// cmdStatus says whether this computer is signed in, and to which account,
+// asking the platform so that an expired session shows as signed out.
+func cmdStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	dir := fs.String("dir", defaultDir(), "state directory")
+	asJSON := fs.Bool("json", false, "print the status as JSON")
+	fs.Parse(args)
+	out := map[string]any{"signed_in": false}
+	if s, err := loadSession(*dir); err == nil {
+		var me struct {
+			Email string `json:"email"`
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		err := call(ctx, s, "GET", "/v1/me", nil, &me)
+		var ae *apiError
+		switch {
+		case err == nil:
+			out["signed_in"], out["email"] = true, me.Email
+		case errors.As(err, &ae) && ae.Status == http.StatusUnauthorized:
+		default:
+			// Offline: the session is there, but could not be checked.
+			out["signed_in"], out["unchecked"] = true, err.Error()
+		}
+	}
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(out)
+	}
+	if out["signed_in"] == true {
+		fmt.Printf("signed in as %v\n", out["email"])
+	} else {
+		fmt.Println("not signed in")
+	}
 	return nil
 }

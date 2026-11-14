@@ -46,6 +46,7 @@ func browserLogin(ctx context.Context, api string, noBrowser bool) (string, erro
 		map[string]string{"client": "nodeex-connect " + version}, &start); err != nil {
 		return "", err
 	}
+	emit("code", map[string]any{"user_code": start.UserCode, "verification_url": start.VerificationURL, "expires_in": start.ExpiresIn})
 	fmt.Fprintf(os.Stderr, "\nTo sign in, open this page and approve the code:\n\n    %s\n\n    code: %s\n\n", start.VerificationURL, start.UserCode)
 	fmt.Fprintln(os.Stderr, "Approve only if the page is on nodeex.com and shows this same code.")
 	if !noBrowser {
