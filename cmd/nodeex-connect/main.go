@@ -549,9 +549,12 @@ func cmdStatus(args []string) error {
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(out)
 	}
-	if out["signed_in"] == true {
+	switch {
+	case out["signed_in"] == true && out["email"] != nil:
 		fmt.Printf("signed in as %v\n", out["email"])
-	} else {
+	case out["signed_in"] == true:
+		fmt.Printf("signed in (could not reach the platform to check: %v)\n", out["unchecked"])
+	default:
 		fmt.Println("not signed in")
 	}
 	return nil
