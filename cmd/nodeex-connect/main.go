@@ -1,7 +1,8 @@
 // nodeex-connect is the renter-side client. It signs in, lists leases, and
 // opens a leased machine's SSH and remote desktop on local ports.
 //
-//	nodeex-connect login -api URL -email EMAIL
+//	nodeex-connect login [-no-browser]       (approve in the browser)
+//	nodeex-connect login -email EMAIL        (password, for machines without a browser)
 //	nodeex-connect leases
 //	nodeex-connect open LEASE_ID [-ssh-port 10022] [-vnc-port 15900] [-open-vnc]
 package main
@@ -155,21 +156,43 @@ func usage() {
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	api := fs.String("api", envOr("NODEEX_API", defaultAPI), "platform API URL (or $NODEEX_API)")
-	email := fs.String("email", "", "account email")
+	email := fs.String("email", "", "sign in with email and password instead of the browser")
+	noBrowser := fs.Bool("no-browser", false, "print the sign-in address instead of opening a browser")
 	dir := fs.String("dir", defaultDir(), "state directory")
 	fs.Parse(args)
-	if *api == "" || *email == "" {
-		return errors.New("usage: nodeex-connect login -email YOU@EXAMPLE.COM")
+	if *api == "" {
+		return errors.New("usage: nodeex-connect login [-no-browser] [-email YOU@EXAMPLE.COM]")
 	}
-	// The password comes from the terminal or $NODEEX_PASSWORD, never a
-	// flag, so it stays out of shell history and process listings.
+	var token string
+	if *email == "" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		t, err := browserLogin(ctx, *api, *noBrowser)
+		if err != nil {
+			return err
+		}
+		token = t
+	} else {
+		t, err := passwordLogin(*api, *email)
+		if err != nil {
+			return err
+		}
+		token = t
+	}
+	return saveSession(*dir, session{API: *api, Token: token})
+}
+
+// passwordLogin is for a computer with no browser at hand. The password
+// comes from the terminal or $NODEEX_PASSWORD, never a flag, so it stays
+// out of shell history and process listings.
+func passwordLogin(api, email string) (string, error) {
 	password := os.Getenv("NODEEX_PASSWORD")
 	if password == "" {
 		fmt.Fprint(os.Stderr, "password: ")
 		b, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
-			return err
+			return "", err
 		}
 		password = string(b)
 	}
@@ -178,16 +201,17 @@ func cmdLogin(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err := call(ctx, session{API: *api}, "POST", "/v1/auth/login",
-		map[string]string{"email": *email, "password": password}, &res)
-	if err != nil {
+	err := call(ctx, session{API: api}, "POST", "/v1/auth/login",
+		map[string]string{"email": email, "password": password}, &res)
+	return res.Token, err
+}
+
+func saveSession(dir string, s session) error {
+	b, _ := json.MarshalIndent(s, "", "  ")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, _ := json.MarshalIndent(session{API: *api, Token: res.Token}, "", "  ")
-	if err := os.MkdirAll(*dir, 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(sessionPath(*dir), b, 0o600); err != nil {
+	if err := os.WriteFile(sessionPath(dir), b, 0o600); err != nil {
 		return err
 	}
 	fmt.Println("signed in")

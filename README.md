@@ -27,7 +27,7 @@ go build -o nodeex-connect ./cmd/nodeex-connect
 ## Use
 
 ```sh
-nodeex-connect login -api https://app.nodeex.com -email you@example.com
+nodeex-connect login
 nodeex-connect leases
 nodeex-connect open LEASE_ID
 ```
@@ -46,8 +46,16 @@ directly where the two networks allow it and through an encrypted relay where th
 connection only if it presents a lease token signed by the platform; Connect fetches a fresh token for each
 connection, tokens last 10 minutes, and access ends when the lease does.
 
-The password is read from the terminal or from `$NODEEX_PASSWORD` and is never stored; `login` keeps a session
-token in your user configuration directory.
+`login` signs in through your browser: it prints a short code and opens app.nodeex.com, where you check the
+code and approve it. Connect never sees your password, so a counterfeit copy has none to take. Approve only a code
+you have just started yourself. Add `-no-browser` to print the address instead of opening it (to approve on another
+device). On a computer with no browser, `login -email you@example.com` asks for the password in the terminal (or
+reads `$NODEEX_PASSWORD`) and never stores it. Either way `login` keeps a session token in your user configuration
+directory.
+
+Official builds are published only on this repository's releases page and on https://nodeex.com/download. The
+macOS builds are signed with the Developer ID `HE PANG (7GS265YM4T)` and notarized by Apple; every release has a
+`SHA256SUMS` file. See [how to check a download](https://nodeex.com/security#software).
 
 The gate, lease token, overlay and tunnel code is shared with the node side and lives in
 [nodeexhq/miner](https://github.com/nodeexhq/miner).
