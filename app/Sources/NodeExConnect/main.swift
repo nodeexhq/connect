@@ -345,8 +345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
-            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            statusItem.button?.image = NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "NodeEx Connect")
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            updateIcon()
+            statusItem.button?.setAccessibilityLabel("NodeEx Connect")
             let menu = NSMenu()
             menu.delegate = self
             statusItem.menu = menu
@@ -383,9 +384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @MainActor private func updateIcon() {
-        let name = model.hasConnections ? "desktopcomputer.and.arrow.down" : "desktopcomputer"
-        statusItem.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "NodeEx Connect")
-            ?? NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "NodeEx Connect")
+        // The NodeEx mark, with a dot while a connection is open.
+        statusItem.button?.image = MenuBarMark.image(badge: model.hasConnections ? .dot : .none)
     }
 
     @MainActor private func showSignIn(_ state: ConnectModel.SignInState) {
