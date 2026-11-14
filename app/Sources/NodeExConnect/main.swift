@@ -435,6 +435,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @MainActor private func build(_ menu: NSMenu) {
         menu.removeAllItems()
+        // The version, so a renter can see an update arrive.
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development build"
+        menu.addItem(disabled("NodeEx Connect \(version)"))
+        menu.addItem(.separator())
         if let status = model.status, status.signedIn {
             menu.addItem(disabled("Signed in as \(status.email ?? "your account")"))
         } else {
