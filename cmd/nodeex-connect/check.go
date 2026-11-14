@@ -33,6 +33,17 @@ type machineReport struct {
 	DiskWriteMBps float64 `json:"disk_write_mbps,omitempty"`
 	TunnelMbps    float64 `json:"tunnel_mbps,omitempty"`
 	Client        string  `json:"client"`
+	// How the check was made: "guest" with Connect's own measuring
+	// program, whose answers were checked, or "tools" with the machine's.
+	Method   string   `json:"method"`
+	Verified bool     `json:"verified"`
+	Failures []string `json:"failures,omitempty"`
+	// Throughput of the checked jobs, in MB/s: one core, all cores, and
+	// memory (filling and reading back MemoryTestedBytes).
+	CPU1MBps          float64 `json:"cpu1_mbps,omitempty"`
+	CPUNMBps          float64 `json:"cpun_mbps,omitempty"`
+	MemoryTestedBytes int64   `json:"memory_tested_bytes,omitempty"`
+	MemoryMBps        float64 `json:"memory_mbps,omitempty"`
 }
 
 // checkEvery is how often one computer checks the same lease's machine.
@@ -96,9 +107,18 @@ func runTimed(ctx context.Context, c *ssh.Client, cmd string, limit time.Duratio
 	return time.Since(start), err
 }
 
-// checkMachine looks at the machine over SSH. Only the description is
-// required; a timing that fails is left out of the report.
+// checkMachine looks at the machine over SSH, with Connect's own measuring
+// program when this build carries one.
 func checkMachine(ctx context.Context, c *ssh.Client) (machineReport, error) {
+	if len(guestBinary) > 0 {
+		return checkWithGuest(ctx, c)
+	}
+	return checkWithTools(ctx, c)
+}
+
+// checkWithTools uses the machine's own commands. Only the description is
+// required; a timing that fails is left out of the report.
+func checkWithTools(ctx context.Context, c *ssh.Client) (machineReport, error) {
 	s, err := c.NewSession()
 	if err != nil {
 		return machineReport{}, err
@@ -115,6 +135,7 @@ func checkMachine(ctx context.Context, c *ssh.Client) (machineReport, error) {
 		return r, err
 	}
 	r.Client = "nodeex-connect " + version
+	r.Method = "tools"
 	if d, err := runTimed(ctx, c, checkCPU, 60*time.Second); err == nil {
 		r.CPUSeconds = round2(d.Seconds())
 	}

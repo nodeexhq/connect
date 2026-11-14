@@ -26,8 +26,9 @@ cp "$APP_DIR/Resources/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R "$APP_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$BUNDLE/Contents/Frameworks/"
 cp "$BIN/NodeExConnect" "$BUNDLE/Contents/MacOS/NodeExConnect"
 TMP=$(mktemp -d)
+"$REPO/scripts/build-guest.sh"
 for arch in arm64 amd64; do
-  (cd "$REPO" && CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+  (cd "$REPO" && CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -tags guestbin -trimpath -ldflags "-s -w -X main.version=$VERSION" \
     -o "$TMP/nodeex-connect-$arch" ./cmd/nodeex-connect)
 done
 lipo -create -output "$BUNDLE/Contents/Helpers/nodeex-connect" "$TMP/nodeex-connect-arm64" "$TMP/nodeex-connect-amd64"

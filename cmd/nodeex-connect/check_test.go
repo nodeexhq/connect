@@ -5,7 +5,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"runtime"
 	"testing"
 	"time"
@@ -55,6 +58,7 @@ func TestCheckCommandsOnThisMac(t *testing.T) {
 // whole check runs end to end over a real SSH connection.
 func shellSSHServer(t *testing.T) *ssh.Client {
 	t.Helper()
+	home := t.TempDir()
 	_, hostPriv, _ := ed25519.GenerateKey(rand.Reader)
 	hostSigner, _ := ssh.NewSignerFromKey(hostPriv)
 	cfg := &ssh.ServerConfig{NoClientAuth: true}
@@ -92,7 +96,8 @@ func shellSSHServer(t *testing.T) *ssh.Client {
 							ssh.Unmarshal(req.Payload, &p)
 							req.Reply(true, nil)
 							cmd := exec.Command("sh", "-c", p.Cmd)
-							cmd.Stdout, cmd.Stderr = ch, ch.Stderr()
+							cmd.Env = append(os.Environ(), "HOME="+home)
+							cmd.Stdin, cmd.Stdout, cmd.Stderr = ch, ch, ch.Stderr()
 							status := 0
 							if err := cmd.Run(); err != nil {
 								status = 1
@@ -128,4 +133,70 @@ func TestCheckMachineOverSSH(t *testing.T) {
 		t.Fatalf("incomplete report: %+v", r)
 	}
 	t.Logf("%+v", r)
+}
+
+func buildGuest(t *testing.T) []byte {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "nodeex-guest")
+	cmd := exec.Command("go", "build", "-o", out, "../nodeex-guest")
+	cmd.Env = append(os.Environ(), "GOOS=darwin", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building nodeex-guest: %v\n%s", err, b)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestCheckWithGuest(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS only")
+	}
+	old := guestBinary
+	defer func() { guestBinary = old }()
+	guestBinary = buildGuest(t)
+	c := shellSSHServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	r, err := checkMachine(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Method != "guest" || !r.Verified || len(r.Failures) > 0 || r.CPU1MBps <= 0 || r.CPUNMBps <= r.CPU1MBps ||
+		r.MemoryMBps <= 0 || r.MemoryTestedBytes < 1<<30 || r.DiskWriteMBps <= 0 || r.TunnelMbps <= 0 {
+		t.Fatalf("report: %+v", r)
+	}
+	t.Logf("%+v", r)
+}
+
+// A measuring program that claims a machine and waits instead of working
+// is found out: its answers are wrong.
+func TestCheckCatchesAFakeGuest(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS only")
+	}
+	old := guestBinary
+	defer func() { guestBinary = old }()
+	fake := `#!/bin/sh
+case "$1" in
+info) echo '{"model":"Mac16,11","cpu":"Apple M4 Pro","cores":12,"memory_bytes":68719476736,"disk_bytes":2000000000000,"disk_free_bytes":1900000000000}' ;;
+*) sleep 0.2; h=$(printf '%064d' 0); echo "{\"answers\":[[\"$h\"]]}" ;;
+esac
+`
+	guestBinary = []byte(fake)
+	c := shellSSHServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	r, err := checkMachine(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Verified || len(r.Failures) != 4 || r.CPU1MBps != 0 || r.MemoryMBps != 0 {
+		t.Fatalf("fake guest not caught: %+v", r)
+	}
+	if !strings.Contains(strings.Join(r.Failures, ","), "wrong answers") {
+		t.Fatalf("failures: %v", r.Failures)
+	}
 }
