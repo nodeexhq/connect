@@ -12,6 +12,9 @@ public struct CoreEvent: Decodable, Equatable {
     public var password: String?
     public var sshKey: String?
     public var note: String?
+    /// Where the encrypted private folder is (~/Private), or why it is not.
+    public var privateFolder: String?
+    public var privateNote: String?
     public var direct: Bool?
     public var relay: String?
     public var latencyMs: Double?
@@ -24,6 +27,7 @@ public struct CoreEvent: Decodable, Equatable {
         case event, account, password, note, direct, relay, message, verdict, problems
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
+        case privateFolder = "private", privateNote = "private_note"
     }
 
     public static func parse(_ line: String) -> CoreEvent? {

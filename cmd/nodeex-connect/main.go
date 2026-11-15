@@ -438,8 +438,14 @@ func cmdOpen(args []string) error {
 		log.Printf("  waiting for the machine to accept this computer's key")
 		password, err := prepareMachine(ctx, *dir, leaseID, *sshPort, 90*time.Second)
 		ready := map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort, "ssh_key": sshKeyPath(*dir)}
+		private, privateErr := "", error(nil)
 		if err == nil {
 			ready["account"], ready["password"] = machineAccount, password
+			if private, privateErr = preparePrivateVolume(ctx, *dir, leaseID, *sshPort); privateErr == nil {
+				ready["private"] = private
+			} else if ctx.Err() == nil {
+				ready["private_note"] = privateErr.Error()
+			}
 		} else if !errors.Is(err, errNoMachine) && ctx.Err() == nil {
 			ready["account"] = machineAccount
 			ready["note"] = err.Error()
@@ -460,6 +466,11 @@ func cmdOpen(args []string) error {
 			log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
 			log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
 			log.Printf("                   user %s, password %s", machineAccount, password)
+			if privateErr == nil {
+				log.Printf("  private folder:  %s, an encrypted volume only this computer can unlock; it is locked whenever the machine stops", private)
+			} else {
+				log.Printf("  private folder:  not available (%v)", privateErr)
+			}
 			log.Printf("  The machine is yours for this lease, with sudo, and is erased when the lease ends.")
 		case errors.Is(err, errNoMachine):
 			log.Printf("  This node did not accept the key: it has not given the lease a machine of its own.")

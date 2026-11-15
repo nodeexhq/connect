@@ -195,6 +195,15 @@ final class ConnectModel: ObservableObject {
             switch e.event {
             case "ready":
                 c.ready = e
+                // Once, the first time a machine is ready: whose machine it is.
+                if e.account != nil, !UserDefaults.standard.bool(forKey: "shownOwnerNotice") {
+                    UserDefaults.standard.set(true, forKey: "shownOwnerNotice")
+                    self.alert("This Mac belongs to someone else",
+                               "It sits in its owner's home or office, and the owner can reach the hardware. "
+                               + "Keep files and keys that matter in ~/Private: an encrypted folder only this computer can unlock, "
+                               + "locked whenever the machine stops. Use short-lived, limited credentials, and keep your own "
+                               + "backups: if the node goes offline, what is on it may be out of reach until it returns.")
+                }
                 let modes = c.pending
                 c.pending = []
                 modes.forEach { self.hand(c, $0) }
@@ -482,6 +491,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let check = conn.check { sub.addItem(disabled("Machine check: \(check)")) }
             if let r = conn.ready {
                 if let account = r.account { sub.addItem(disabled("Account: \(account)")) }
+                // The encrypted folder only this computer can unlock.
+                if let folder = r.privateFolder { sub.addItem(disabled("Private folder: \(folder) (encrypted)")) }
+                else if r.privateNote != nil { sub.addItem(disabled("Private folder: not available")) }
                 if r.password != nil {
                     sub.addItem(item("Copy desktop password") { [weak self] in self?.model.copyPassword(lease.id) })
                 }

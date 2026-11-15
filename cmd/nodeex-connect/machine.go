@@ -26,6 +26,9 @@ type machineAccess struct {
 	// for. Connect chose it and set it in the machine; it is kept here and
 	// nowhere else.
 	DesktopPassword string `json:"desktop_password"`
+	// PrivatePassphrase locks the machine's encrypted private volume. Like
+	// the password, Connect chose it and it is kept here and nowhere else.
+	PrivatePassphrase string `json:"private_passphrase,omitempty"`
 	// CheckedAt is when this computer last checked the machine.
 	CheckedAt time.Time `json:"checked_at,omitempty"`
 }
@@ -155,3 +158,126 @@ func prepareMachine(ctx context.Context, dir, leaseID string, port int, wait tim
 }
 
 var errNoMachine = errors.New("the machine did not accept this computer's key")
+
+// privateVolume is the encrypted APFS volume Connect makes in a lease's
+// machine for the renter's files and keys. Its passphrase exists only on
+// the renter's computer: whenever the machine is not running (the node went
+// offline and was shut down, was restarted, or its disk was copied) the
+// volume is locked and its contents are unreadable, the owner's included.
+// While the machine runs, the volume stays unlocked; an owner set on it
+// could reach it then, which the security page says plainly.
+const privateVolume = "NodeEx Private"
+
+// privateLink is where the renter finds the volume in their home folder.
+const privateLink = "Private"
+
+type apfsList struct {
+	Containers []struct {
+		ContainerReference string `json:"ContainerReference"`
+		Volumes            []struct {
+			Name             string `json:"Name"`
+			DeviceIdentifier string `json:"DeviceIdentifier"`
+			Locked           bool   `json:"Locked"`
+		} `json:"Volumes"`
+	} `json:"Containers"`
+}
+
+func runOn(client *ssh.Client, command, input string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+	if input != "" {
+		session.Stdin = strings.NewReader(input)
+	}
+	out, err := session.CombinedOutput(command)
+	return string(out), err
+}
+
+// preparePrivateVolume makes the lease's private volume on first use and
+// unlocks it on later connections, and returns where it is mounted. The
+// passphrase is saved before the volume is made, so a volume never exists
+// whose passphrase was lost.
+func preparePrivateVolume(ctx context.Context, dir, leaseID string, port int) (string, error) {
+	client, err := machineLogin(ctx, dir, port)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	a := loadAccess(dir, leaseID)
+	if a.PrivatePassphrase == "" {
+		p, err := newPassword()
+		if err != nil {
+			return "", err
+		}
+		a.PrivatePassphrase = p
+		if err := saveAccess(dir, leaseID, a); err != nil {
+			return "", err
+		}
+	}
+	out, err := runOn(client, `/usr/sbin/diskutil apfs list -plist | /usr/bin/plutil -convert json -o - -`, "")
+	if err != nil {
+		return "", fmt.Errorf("could not list the machine's volumes: %v", err)
+	}
+	var list apfsList
+	if err := json.Unmarshal([]byte(out), &list); err != nil {
+		return "", errors.New("could not read the machine's volume list")
+	}
+	device, locked := "", false
+	for _, c := range list.Containers {
+		for _, v := range c.Volumes {
+			if v.Name == privateVolume {
+				device, locked = v.DeviceIdentifier, v.Locked
+			}
+		}
+	}
+	mount := "/Volumes/" + privateVolume
+	// The passphrase travels on standard input, never on a command line.
+	switch {
+	case device == "":
+		ref, err := runOn(client, `/usr/sbin/diskutil info -plist / | /usr/bin/plutil -extract APFSContainerReference raw -`, "")
+		ref = strings.TrimSpace(ref)
+		if err != nil || !validDisk(ref) {
+			return "", fmt.Errorf("could not find the machine's disk: %v %s", err, ref)
+		}
+		if out, err := runOn(client, `IFS= read -r p && printf '%s\n' "$p" | sudo -n /usr/sbin/diskutil apfs addVolume `+ref+` APFS "`+privateVolume+`" -stdinpassphrase`, a.PrivatePassphrase+"\n"); err != nil {
+			return "", fmt.Errorf("could not make the private volume: %v %s", err, lastLine(out))
+		}
+	case locked:
+		if !validDisk(device) {
+			return "", fmt.Errorf("unexpected volume %q", device)
+		}
+		if out, err := runOn(client, `IFS= read -r p && printf '%s\n' "$p" | sudo -n /usr/sbin/diskutil apfs unlockVolume `+device+` -stdinpassphrase`, a.PrivatePassphrase+"\n"); err != nil {
+			return "", fmt.Errorf("could not unlock the private volume: %v %s", err, lastLine(out))
+		}
+	}
+	// Files on it belong to the machine account, and it shows up as
+	// ~/Private.
+	setup := `sudo -n /usr/sbin/diskutil enableOwnership "` + mount + `" >/dev/null 2>&1; ` +
+		`sudo -n /usr/sbin/chown ` + machineAccount + `:staff "` + mount + `" && ` +
+		`{ [ -e "$HOME/` + privateLink + `" ] || /bin/ln -s "` + mount + `" "$HOME/` + privateLink + `"; }`
+	if out, err := runOn(client, setup, ""); err != nil {
+		return "", fmt.Errorf("could not set up the private volume: %v %s", err, lastLine(out))
+	}
+	return "~/" + privateLink, nil
+}
+
+// validDisk accepts a disk identifier such as disk3 or disk3s7, and
+// nothing that could change the meaning of the command it goes into.
+func validDisk(s string) bool {
+	if !strings.HasPrefix(s, "disk") || len(s) > 16 {
+		return false
+	}
+	for _, c := range s[4:] {
+		if !(c >= '0' && c <= '9' || c == 's') {
+			return false
+		}
+	}
+	return len(s) > 4
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
+}
