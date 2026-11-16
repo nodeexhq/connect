@@ -490,6 +490,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let path = conn.path { sub.addItem(disabled("Connection: \(path)")) }
             if let check = conn.check { sub.addItem(disabled("Machine check: \(check)")) }
             if let r = conn.ready {
+                if let host = r.sshHost {
+                    // Remote development over SSH: the editors open the
+                    // machine by its name in ~/.ssh/config.
+                    for (name, bundle, scheme) in [("VS Code", "com.microsoft.VSCode", "vscode"), ("Cursor", "com.todesktop.230313mzl4w4u92", "cursor")]
+                    where NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) != nil {
+                        sub.addItem(item("Open in \(name)") {
+                            if let url = URL(string: "\(scheme)://vscode-remote/ssh-remote+\(host)/Users/\(r.account ?? "renter")") { NSWorkspace.shared.open(url) }
+                        })
+                    }
+                    sub.addItem(item("Copy SSH command (ssh \(host))") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString("ssh \(host)", forType: .string)
+                    })
+                }
                 if let account = r.account { sub.addItem(disabled("Account: \(account)")) }
                 // The encrypted folder only this computer can unlock.
                 if let folder = r.privateFolder { sub.addItem(disabled("Private folder: \(folder) (encrypted)")) }

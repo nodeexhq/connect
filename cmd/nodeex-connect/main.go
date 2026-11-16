@@ -308,6 +308,7 @@ func cmdOpen(args []string) error {
 	openVNC := fs.Bool("open-vnc", false, "open the remote desktop viewer once connected")
 	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
 	noCheck := fs.Bool("no-check", false, "do not check the machine against what was ordered")
+	noSSHConfig := fs.Bool("no-ssh-config", false, "do not name the machine in ~/.ssh/config while connected")
 	// Accept the lease ID before or after the flags.
 	var leaseID string
 	if len(args) > 0 && len(args[0]) > 0 && args[0][0] != '-' {
@@ -441,6 +442,16 @@ func cmdOpen(args []string) error {
 		private, privateErr := "", error(nil)
 		if err == nil {
 			ready["account"], ready["password"] = machineAccount, password
+			// A name in ~/.ssh for terminals and editors (VS Code, Cursor,
+			// JetBrains Gateway). Best effort: without it, the port works.
+			if !*noSSHConfig {
+				if host, err := writeSSHHost(*dir, leaseID, *sshPort); err == nil {
+					ready["ssh_host"] = host
+					defer removeSSHHost(leaseID)
+				} else {
+					log.Printf("  could not add the machine to ~/.ssh/config: %v", err)
+				}
+			}
 			if private, privateErr = preparePrivateVolume(ctx, *dir, leaseID, *sshPort); privateErr == nil {
 				ready["private"] = private
 			} else if ctx.Err() == nil {
@@ -463,7 +474,12 @@ func cmdOpen(args []string) error {
 		}
 		switch {
 		case err == nil:
-			log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
+			if host, ok := ready["ssh_host"].(string); ok {
+				log.Printf("  ssh:             ssh %s", host)
+				log.Printf("  editors:         VS Code or Cursor Remote-SSH, JetBrains Gateway: connect to host %s", host)
+			} else {
+				log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
+			}
 			log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
 			log.Printf("                   user %s, password %s", machineAccount, password)
 			if privateErr == nil {
