@@ -390,6 +390,8 @@ func cmdOpen(args []string) error {
 				var ae *apiError
 				if errors.As(err, &ae) && ae.Code == "lease_not_active" {
 					log.Printf("the lease has ended; closing")
+					emit("lease_ended", nil)
+					forgetSSHHost(leaseID)
 					cancel()
 				}
 				return nil, err
