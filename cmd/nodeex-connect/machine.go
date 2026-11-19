@@ -263,6 +263,24 @@ func preparePrivateVolume(ctx context.Context, dir, leaseID string, port int) (s
 	return "~/" + privateLink, nil
 }
 
+// reopenPrivateVolume unlocks the private volume again if the machine has
+// lost it, which is what a restart does. again is false when the volume is
+// in place or the machine cannot be reached just now, which is not worth a
+// word: a paused machine answers nothing, and comes back as it was.
+func reopenPrivateVolume(ctx context.Context, dir, leaseID string, port int) (again bool, err error) {
+	client, err := machineLogin(ctx, dir, port)
+	if err != nil {
+		return false, nil
+	}
+	out, err := runOn(client, `[ -d "/Volumes/`+privateVolume+`" ] && echo mounted || echo missing`, "")
+	client.Close()
+	if err != nil || strings.TrimSpace(out) != "missing" {
+		return false, nil
+	}
+	_, err = preparePrivateVolume(ctx, dir, leaseID, port)
+	return true, err
+}
+
 // validDisk accepts a disk identifier such as disk3 or disk3s7, and
 // nothing that could change the meaning of the command it goes into.
 func validDisk(s string) bool {

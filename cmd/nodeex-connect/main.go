@@ -429,6 +429,9 @@ func cmdOpen(args []string) error {
 	if *vncPort, err = forward(*vncPort, leasetoken.ServiceVNC); err != nil {
 		return err
 	}
+	// Set once the lease's private folder has been unlocked, so that it is
+	// unlocked again if the machine restarts while connected.
+	privateReady := false
 	emit("listening", map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort})
 	log.Printf("ready; leave this running while you use the machine, and press Ctrl+C to disconnect")
 	if !registered {
@@ -456,6 +459,7 @@ func cmdOpen(args []string) error {
 			}
 			if private, privateErr = preparePrivateVolume(ctx, *dir, leaseID, *sshPort); privateErr == nil {
 				ready["private"] = private
+				privateReady = true
 			} else if ctx.Err() == nil {
 				ready["private_note"] = privateErr.Error()
 			}
@@ -524,6 +528,18 @@ func cmdOpen(args []string) error {
 				call(pctx, s, "POST", "/v1/leases/"+leaseID+"/session", map[string]any{
 					"direct": path.Direct, "relay": path.Relay, "latency_ms": path.Latency * 1000,
 				}, nil)
+			}
+			// A machine that restarted comes back with the private folder
+			// locked, and only this computer has its passphrase.
+			if privateReady {
+				uctx, ucancel := context.WithTimeout(ctx, 20*time.Second)
+				if again, err := reopenPrivateVolume(uctx, *dir, leaseID, *sshPort); again && err == nil {
+					log.Printf("the machine restarted; its private folder is unlocked again")
+					emit("private_unlocked", nil)
+				} else if again && uctx.Err() == nil {
+					log.Printf("the machine restarted, and its private folder could not be unlocked: %v", err)
+				}
+				ucancel()
 			}
 			// A lease that has ended has nothing left to connect to: say
 			// so and stop, instead of holding dead ports open for good.
