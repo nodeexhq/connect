@@ -106,3 +106,13 @@ func removeSSHHost(leaseID string) {
 	id := strings.TrimPrefix(sshHost(leaseID), "nodeex-")
 	os.Remove(filepath.Join(dir, id+".conf"))
 }
+
+// forgetSSHHost deletes the host key remembered for a lease that has ended:
+// its machine is erased, so the key will never be seen again.
+func forgetSSHHost(leaseID string) {
+	dir, err := sshConfigDir()
+	if err != nil {
+		return
+	}
+	os.Remove(filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(sshHost(leaseID), "nodeex-")))
+}

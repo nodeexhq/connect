@@ -43,4 +43,11 @@ func TestSSHHostEntry(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(sshDir, "nodeex", "3f9a1c2e.conf")); !os.IsNotExist(err) {
 		t.Error("entry left behind after disconnect")
 	}
+	// The host key of a lease that has ended is forgotten.
+	known := filepath.Join(sshDir, "nodeex", "known_hosts-3f9a1c2e")
+	os.WriteFile(known, []byte("x"), 0o600)
+	forgetSSHHost("3f9a1c2e-1111-2222-3333-444455556666")
+	if _, err := os.Stat(known); !os.IsNotExist(err) {
+		t.Error("host key left behind after the lease ended")
+	}
 }

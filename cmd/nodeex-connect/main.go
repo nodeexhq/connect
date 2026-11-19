@@ -530,6 +530,7 @@ func cmdOpen(args []string) error {
 				pcancel()
 				log.Printf("lease %s has ended; disconnecting", leaseID)
 				emit("lease_ended", nil)
+				forgetSSHHost(leaseID)
 				cancel()
 				return
 			}
