@@ -523,6 +523,16 @@ func cmdOpen(args []string) error {
 					"direct": path.Direct, "relay": path.Relay, "latency_ms": path.Latency * 1000,
 				}, nil)
 			}
+			// A lease that has ended has nothing left to connect to: say
+			// so and stop, instead of holding dead ports open for good.
+			// Only the platform's own word counts; a failed request does not.
+			if ended, known := leaseEnded(pctx, s, leaseID); known && ended {
+				pcancel()
+				log.Printf("lease %s has ended; disconnecting", leaseID)
+				emit("lease_ended", nil)
+				cancel()
+				return
+			}
 			pcancel()
 			select {
 			case <-ctx.Done():
@@ -534,6 +544,26 @@ func cmdOpen(args []string) error {
 	wg.Wait()
 	emit("closed", nil)
 	return nil
+}
+
+// leaseEnded asks the platform whether the lease is over. known is false
+// when the platform could not be asked or does not list the lease.
+func leaseEnded(ctx context.Context, s session, leaseID string) (ended, known bool) {
+	var res struct {
+		Leases []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"leases"`
+	}
+	if err := call(ctx, s, "GET", "/v1/leases", nil, &res); err != nil {
+		return false, false
+	}
+	for _, l := range res.Leases {
+		if l.ID == leaseID {
+			return l.Status == "ended", l.Status != ""
+		}
+	}
+	return false, false
 }
 
 // cmdLogout ends the session on the platform and forgets it here.
