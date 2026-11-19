@@ -75,6 +75,9 @@ jobs:
             --notes "NodeEx Connect for macOS (the app, for Apple silicon and Intel) and the command-line client for macOS, Windows and Linux. The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against the checksums."
 
       - name: Update feed
+        # A test build (a tag with a suffix, such as v0.1.16-test.1) is published
+        # for trying on one machine; installed apps are not offered it.
+        if: ${{ !contains(github.ref_name, '-') }}
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
