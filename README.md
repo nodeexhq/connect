@@ -37,6 +37,12 @@ While `open` runs, the machine is reachable at:
 - SSH: `ssh -p 10022 <user>@127.0.0.1`
 - Remote desktop: `vnc://127.0.0.1:15900` (macOS Screen Sharing; on Windows and Linux, a VNC viewer you install)
 
+Before you order, the website can reserve a machine and have Connect test the connection to it:
+`nodeex-connect test RESERVATION_ID` reaches the reserved machine the way a lease would, measures latency, jitter,
+download and upload for at most ten seconds, and prints the platform's rating (smooth, ok or may lag). The Mac app
+runs it when the website opens `nodeex-connect://test?reservation=RESERVATION_ID`. A test is free and moves at most
+what its ticket allows (10 MB each way).
+
 Every command and flag is described in the [Connect reference](https://nodeex.com/docs/reference/connect-cli).
 
 ## How it connects

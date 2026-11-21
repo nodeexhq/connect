@@ -1,10 +1,12 @@
-// nodeex-connect is the renter-side client. It signs in, lists leases, and
-// opens a leased machine's SSH and remote desktop on local ports.
+// nodeex-connect is the renter-side client. It signs in, lists leases,
+// opens a leased machine's SSH and remote desktop on local ports, and tests
+// the connection to a reserved machine before it is ordered.
 //
 //	nodeex-connect login [-no-browser]       (approve in the browser)
 //	nodeex-connect login -email EMAIL        (password, for machines without a browser)
 //	nodeex-connect leases
 //	nodeex-connect open LEASE_ID [-ssh-port 10022] [-vnc-port 15900] [-open-vnc]
+//	nodeex-connect test RESERVATION_ID [-events]
 package main
 
 import (
@@ -141,6 +143,8 @@ func main() {
 		err = cmdLeases(os.Args[2:])
 	case "open":
 		err = cmdOpen(os.Args[2:])
+	case "test":
+		err = cmdTest(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Printf("nodeex-connect %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
 	default:
@@ -154,7 +158,16 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: nodeex-connect <login|logout|status|leases|open|version> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: nodeex-connect <login|logout|status|leases|open|test|version> [flags]")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "  login [-no-browser] [-email EMAIL]   sign in")
+	fmt.Fprintln(os.Stderr, "  logout                               sign out")
+	fmt.Fprintln(os.Stderr, "  status [-json]                       whether this computer is signed in")
+	fmt.Fprintln(os.Stderr, "  leases [-json]                       list your leases")
+	fmt.Fprintln(os.Stderr, "  open LEASE_ID [-ssh-port N] [-vnc-port N] [-open-vnc]")
+	fmt.Fprintln(os.Stderr, "                                       bring a leased machine's SSH and remote desktop here")
+	fmt.Fprintln(os.Stderr, "  test RESERVATION_ID [-events]        test the connection to a reserved machine before ordering it")
+	fmt.Fprintln(os.Stderr, "  version                              print the version")
 	os.Exit(2)
 }
 

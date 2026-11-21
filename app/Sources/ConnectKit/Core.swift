@@ -20,8 +20,14 @@ public struct CoreEvent: Decodable, Equatable {
     public var direct: Bool?
     public var relay: String?
     public var latencyMs: Double?
+    /// A connection test's other figures (with latencyMs, direct, relay and
+    /// verdict: "smooth", "ok" or "may_lag").
+    public var jitterMs: Double?
+    public var downMbps: Double?
+    public var upMbps: Double?
     public var message: String?
-    /// A machine check: "ok" or "mismatch", and what did not match.
+    /// A machine check: "ok" or "mismatch", and what did not match. For a
+    /// connection test, the platform's rating.
     public var verdict: String?
     public var problems: [String]?
     /// Whether the platform refunded the lease for the mismatch, and how much.
@@ -32,6 +38,7 @@ public struct CoreEvent: Decodable, Equatable {
         case event, account, password, note, direct, relay, message, verdict, problems, refunded, refund
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
+        case jitterMs = "jitter_ms", downMbps = "down_mbps", upMbps = "up_mbps"
         case privateFolder = "private", privateNote = "private_note", sshHost = "ssh_host"
     }
 

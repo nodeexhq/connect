@@ -6,7 +6,9 @@ import SwiftUI
 // The menu-bar app. A renter clicks "Remote desktop" or "Terminal" next to a
 // lease on the NodeEx website, or picks the lease from this menu; the app
 // signs in through the browser if it has to, runs the Go core to reach the
-// machine, and opens Screen Sharing or Terminal on it.
+// machine, and opens Screen Sharing or Terminal on it. Before an order, the
+// website's "Test the connection" opens nodeex-connect://test?reservation=…,
+// and the app runs the core's connection test and shows what it found.
 
 /// One lease's connection: the core process and what it has reported.
 @MainActor
@@ -29,6 +31,7 @@ final class Connection {
 @MainActor
 final class ConnectModel: ObservableObject {
     @Published var signIn: SignInState = .idle
+    @Published var test: TestState = .idle
     private(set) var status: SignInStatus?
     private(set) var leases: [Lease] = []
     private(set) var leaseError: String?
@@ -37,6 +40,7 @@ final class ConnectModel: ObservableObject {
     let updates = Updates()
 
     private var loginProcess: CoreProcess?
+    private var testProcess: CoreProcess?
     private var afterSignIn: [() -> Void] = []
     private var timer: Timer?
 
@@ -44,6 +48,15 @@ final class ConnectModel: ObservableObject {
         case idle
         case starting
         case waiting(code: String, url: URL)
+        case failed(String)
+    }
+
+    enum TestState: Equatable {
+        case idle
+        /// Signing in first, or reaching the machine.
+        case reaching
+        case measuring
+        case done(TestOutcome)
         case failed(String)
     }
 
@@ -147,6 +160,8 @@ final class ConnectModel: ObservableObject {
             if let err {
                 self.signIn = .failed(err)
                 self.afterSignIn = []
+                // A test waiting for the sign-in will not run now.
+                if self.testProcess == nil, self.test == .reaching { self.test = .failed("Could not sign in: \(err)") }
             }
         }
         do {
@@ -162,15 +177,71 @@ final class ConnectModel: ObservableObject {
         loginProcess = nil
         afterSignIn = []
         signIn = .idle
+        if testProcess == nil, test == .reaching { test = .idle }
     }
 
     func signOut() {
         guard let cli else { return }
         for c in connections.values { c.process.stop() }
+        cancelTest()
         Task.detached {
             try? cli.logout()
             await MainActor.run { self.refresh() }
         }
+    }
+
+    // MARK: Testing a reserved machine
+
+    /// Tests the connection to a reserved machine, signing in first if
+    /// needed. One test at a time: a second link while one runs only
+    /// brings its window forward.
+    func startTest(reservation: String) {
+        if testProcess != nil {
+            test = test
+            return
+        }
+        test = .reaching
+        whenSignedIn { [weak self] in self?.runTest(reservation: reservation) }
+    }
+
+    private func runTest(reservation: String) {
+        guard let cli, testProcess == nil, test == .reaching else { return }
+        let p = CoreProcess(cli: cli, args: ["test", reservation, "-events"])
+        p.onEvent = { [weak self, weak p] e in
+            guard let self, let p, self.testProcess === p else { return }
+            switch e.event {
+            case "test_started":
+                self.test = .measuring
+            case "test_result":
+                if let outcome = TestOutcome(e) { self.test = .done(outcome) }
+            default:
+                break
+            }
+        }
+        p.onExit = { [weak self, weak p] err in
+            // A test cancelled from its window has already been let go.
+            guard let self, let p, self.testProcess === p else { return }
+            self.testProcess = nil
+            if let err {
+                self.test = .failed(err)
+            } else if case .done = self.test {
+            } else if self.test != .idle {
+                self.test = .failed("The test stopped before it finished.")
+            }
+        }
+        do {
+            try p.start()
+            testProcess = p
+        } catch {
+            test = .failed("\(error)")
+        }
+    }
+
+    func cancelTest() {
+        if testProcess == nil, test == .reaching, loginProcess != nil { cancelSignIn() }
+        testProcess?.stop()
+        testProcess = nil
+        test = .idle
     }
 
     // MARK: Connecting
@@ -275,6 +346,7 @@ final class ConnectModel: ObservableObject {
 
     func disconnectAll() {
         for c in connections.values { c.process.stop() }
+        testProcess?.stop()
     }
 
     var hasConnections: Bool { !connections.isEmpty }
@@ -360,11 +432,72 @@ struct SignInView: View {
     }
 }
 
+/// The small window of a connection test: progress, then the verdict.
+struct TestView: View {
+    @ObservedObject var model: ConnectModel
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("Connection test").font(.title2.bold())
+            switch model.test {
+            case .idle, .reaching:
+                ProgressView()
+                Text(model.signIn == .idle ? "Reaching the reserved machine…" : "Sign in to run the test.")
+                    .foregroundStyle(.secondary)
+                Button("Cancel") { model.cancelTest() }
+            case .measuring:
+                ProgressView()
+                Text("Measuring the connection. This takes about ten seconds.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                Button("Cancel") { model.cancelTest() }
+            case .done(let r):
+                Text(r.headline)
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(r.verdict == "smooth" ? Color.green : r.verdict == "may_lag" ? Color.orange : Color.primary)
+                Text(r.explanation)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                    GridRow { Text("Latency").foregroundStyle(.secondary); Text(r.latency) }
+                    GridRow { Text("Jitter").foregroundStyle(.secondary); Text(r.jitter) }
+                    GridRow { Text("Download").foregroundStyle(.secondary); Text(r.down) }
+                    GridRow { Text("Upload").foregroundStyle(.secondary); Text(r.up) }
+                    GridRow { Text("Path").foregroundStyle(.secondary); Text(r.path) }
+                }
+                .font(.body.monospacedDigit())
+                Text("Go back to the browser to confirm the order or try another machine.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Close") { model.cancelTest() }
+                    .keyboardShortcut(.defaultAction)
+            case .failed(let message):
+                Text("The test could not be run").font(.headline)
+                Text(message)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Go back to the browser to try again or try another machine.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Close") { model.cancelTest() }
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let model = MainActor.assumeIsolated { ConnectModel() }
     private var statusItem: NSStatusItem!
     private var signInWindow: NSWindow?
+    private var testWindow: NSWindow?
     private var observation: Any?
+    private var testObservation: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
@@ -381,6 +514,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             observation = model.$signIn.sink { [weak self] state in
                 DispatchQueue.main.async { self?.showSignIn(state) }
             }
+            testObservation = model.$test.sink { [weak self] state in
+                DispatchQueue.main.async { self?.showTest(state) }
+            }
             if model.cli == nil {
                 model.alert("NodeEx Connect is damaged", "The nodeex-connect program was not found inside the app. Download the app again from nodeex.com/download.")
             }
@@ -394,6 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for url in urls {
                 switch LinkRequest(url) {
                 case .open(let lease, let mode)?: model.open(lease: lease, mode: mode)
+                case .test(let reservation)?: model.startTest(reservation: reservation)
                 case .signIn?: model.whenSignedIn {}
                 case nil: break
                 }
@@ -433,6 +570,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         signInWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor private func showTest(_ state: ConnectModel.TestState) {
+        if state == .idle {
+            testWindow?.close()
+            testWindow = nil
+            return
+        }
+        if testWindow == nil {
+            let w = NSWindow(contentViewController: NSHostingController(rootView: TestView(model: model)))
+            w.title = "NodeEx Connect"
+            w.styleMask = [.titled, .closable]
+            w.isReleasedWhenClosed = false
+            w.center()
+            testWindow = w
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.testWindow = nil
+                    if self?.model.test != .idle { self?.model.cancelTest() }
+                }
+            }
+        }
+        // The sign-in window comes first while it is up.
+        if signInWindow == nil {
+            NSApp.activate(ignoringOtherApps: true)
+            testWindow?.makeKeyAndOrderFront(nil)
+        } else {
+            testWindow?.orderFront(nil)
+        }
     }
 
     // MARK: The menu
