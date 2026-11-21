@@ -84,6 +84,7 @@ func (p *testPlatform) serve(t *testing.T) *httptest.Server {
 // with reply and then runs a fake test.
 type testOverlay struct {
 	reply  string
+	opts   fake.Options
 	path   overlay.Path
 	cfg    overlay.Config
 	closed bool
@@ -106,7 +107,7 @@ func (o *testOverlay) join(ctx context.Context, c overlay.Config) (overlayNet, e
 				o.gotTok = strings.TrimSpace(line)
 				fmt.Fprintf(machine, "%s\n", o.reply)
 				if o.reply == "OK" {
-					fake.Serve(machine, fake.Options{})
+					fake.Serve(machine, o.opts)
 				}
 			}()
 			return client, nil
@@ -215,6 +216,36 @@ func TestRunTestRefusals(t *testing.T) {
 	}
 	if _, err := runTest(context.Background(), session{API: srv.URL, Token: "tok"}, "../leases", o.join); err == nil || !strings.Contains(err.Error(), "not a reservation ID") {
 		t.Errorf("bad id: %v", err)
+	}
+}
+
+// A test the machine accepted but that could not finish is a failure with a
+// reason, and no result is reported for it.
+func TestRunTestFails(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		opts   fake.Options
+		reason string
+		msg    string
+	}{
+		{"no answers", fake.Options{Drop: func(uint32) bool { return true }}, "slow", slowMessage},
+		{"machine error", fake.Options{FailOn: pretest.TypeDown, FailCode: 4, FailReason: "budget"}, "error", "stopped the test: budget"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := &testPlatform{verdict: "ok"}
+			srv := p.serve(t)
+			o := &testOverlay{reply: "OK", opts: c.opts, path: overlay.Path{Direct: true}}
+			_, err := runTest(context.Background(), session{API: srv.URL, Token: "tok"}, testReservation, o.join)
+			var f *testFailure
+			if !errors.As(err, &f) || f.Reason != c.reason || !strings.Contains(f.Error(), c.msg) {
+				t.Fatalf("got %v (%#v), want %s: %q", err, f, c.reason, c.msg)
+			}
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			if p.posted != nil {
+				t.Errorf("a failed test was reported: %v", p.posted)
+			}
+		})
 	}
 }
 

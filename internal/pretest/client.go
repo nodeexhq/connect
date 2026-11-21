@@ -16,10 +16,14 @@ import (
 
 // The client's timing, from the protocol.
 var (
-	pingInterval = 50 * time.Millisecond // after a PONG, before the next PING
-	pingTimeout  = time.Second           // a PING not answered by then is lost
-	upDuration   = 4 * time.Second       // the upload stops sending after this
+	pingInterval = 50 * time.Millisecond   // after a PONG, before the next PING
+	pingTimeout  = time.Second             // a PING not answered by then is lost
+	pingWindow   = 2500 * time.Millisecond // the ping phase stops after this
+	upDuration   = 3 * time.Second         // the upload stops sending after this
 )
+
+// MinPings is the fewest answered pings a test can be rated on.
+const MinPings = 3
 
 // Limits are a test ticket's caps, as the platform gives them. The client
 // never asks for more.
@@ -55,8 +59,9 @@ func (e *RemoteError) Error() string {
 }
 
 var (
-	// ErrTooMuchLoss: fewer than half the pings were answered.
-	ErrTooMuchLoss = errors.New("fewer than half of the test's pings were answered: the connection to this machine is losing too much")
+	// ErrTooMuchLoss: more than half the pings were lost, or fewer than
+	// MinPings were answered in the ping window.
+	ErrTooMuchLoss = errors.New("too few of the test's pings were answered: the connection to this machine is losing too much")
 	// ErrTimeout: the test did not finish within the ticket's time.
 	ErrTimeout = errors.New("the test did not finish in the time allowed: the connection to this machine is too slow")
 	// ErrClosed: the machine closed the connection before the test ended.
@@ -183,22 +188,29 @@ func unexpected(phase string, f Frame) error {
 // mono is this side's monotonic clock, in nanoseconds since the test began.
 func (c *client) mono(t time.Time) uint64 { return uint64(t.Sub(c.epoch)) }
 
-// ping sends exactly n PINGs, one at a time, the next pingInterval after a
-// PONG or straight after a ping is lost. It gives up as soon as more than
-// half are lost, since the test has failed by then.
+// ping sends at most n PINGs, one at a time, the next pingInterval after a
+// PONG or straight after a ping is lost, for at most pingWindow. It gives up
+// as soon as more than half of n are lost, since the test has failed by
+// then. A ping still unanswered when the window closes is not counted.
 func (c *client) ping(n int, r *Result) error {
 	var rtts []float64
 	lost := 0
-	for seq := uint32(1); seq <= uint32(n); seq++ {
+	end := time.Now().Add(pingWindow)
+	for seq := uint32(1); seq <= uint32(n) && time.Now().Before(end); seq++ {
 		sent := time.Now()
 		t := c.mono(sent)
 		if err := c.send(Frame{Type: TypePing, Seq: seq, T: t}, nil); err != nil {
 			return err
 		}
 		r.PingsSent++
+		wait := sent.Add(pingTimeout)
+		cut := wait.After(end)
+		if cut {
+			wait = end
+		}
 		answered := false
 		for !answered {
-			f, at, err := c.recv(sent.Add(pingTimeout))
+			f, at, err := c.recv(wait)
 			if err == errWait {
 				break
 			}
@@ -216,6 +228,9 @@ func (c *client) ping(n int, r *Result) error {
 			}
 		}
 		if !answered {
+			if cut {
+				break // the window closed while it was out
+			}
 			lost++
 			if lost > n/2 {
 				r.PingsAnswered = len(rtts)
@@ -224,13 +239,17 @@ func (c *client) ping(n int, r *Result) error {
 			continue
 		}
 		if int(seq) < n {
-			if err := c.idle(time.Now().Add(pingInterval), "ping"); err != nil {
+			next := time.Now().Add(pingInterval)
+			if next.After(end) {
+				next = end
+			}
+			if err := c.idle(next, "ping"); err != nil {
 				return err
 			}
 		}
 	}
 	r.PingsAnswered = len(rtts)
-	if 2*len(rtts) < n {
+	if len(rtts) < MinPings {
 		return ErrTooMuchLoss
 	}
 	r.LatencyMS, r.JitterMS = Median(rtts), Jitter(rtts)

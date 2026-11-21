@@ -74,6 +74,11 @@ final class ConnectKitTests: XCTestCase {
         XCTAssertTrue(lag.explanation.contains("relay"))
         XCTAssertEqual(TestOutcome(CoreEvent.parse(#"{"event":"test_result","latency_ms":80,"jitter_ms":20,"down_mbps":12,"up_mbps":5,"direct":true,"verdict":"ok"}"#)!)?.headline, "Usable")
 
+        let failed = CoreEvent.parse(#"{"event":"test_failed","reason":"slow","message":"too slow"}"#)
+        XCTAssertEqual(failed?.reason, "slow")
+        XCTAssertEqual(failed?.message, "too slow")
+        XCTAssertNil(TestOutcome(failed!))
+
         // Not a result, or one with a figure missing.
         XCTAssertNil(TestOutcome(CoreEvent.parse(#"{"event":"test_started"}"#)!))
         XCTAssertNil(TestOutcome(CoreEvent.parse(#"{"event":"test_result","verdict":"ok"}"#)!))

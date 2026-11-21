@@ -200,7 +200,10 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 	m, err := pretest.Run(ctx, conn, t.Limits)
 	conn.Close()
 	if err != nil {
-		return testResult{}, err
+		if ctx.Err() != nil {
+			return testResult{}, ctx.Err()
+		}
+		return testResult{}, measureFailure(err)
 	}
 	actx, acancel := context.WithTimeout(ctx, 5*time.Second)
 	path2, err := ov.probe(actx, node)
@@ -235,6 +238,34 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 		return testResult{}, errors.New("the platform did not rate the test")
 	}
 	return *rated.Result, nil
+}
+
+// slowMessage is what a renter hears when the connection was too poor to
+// finish the test: that is a verdict too, if one without figures.
+const slowMessage = "This connection is too slow or unstable to measure; the remote desktop would likely stutter. Try another machine."
+
+// testFailure is a test that the machine accepted but that did not finish.
+// Reason is "slow" when the connection was too poor for it, "error"
+// otherwise. No result is reported to the platform for it.
+type testFailure struct {
+	Reason string
+	Err    error
+}
+
+func (f *testFailure) Error() string {
+	if f.Reason == "slow" {
+		return slowMessage
+	}
+	return f.Err.Error()
+}
+
+func (f *testFailure) Unwrap() error { return f.Err }
+
+func measureFailure(err error) error {
+	if errors.Is(err, pretest.ErrTimeout) || errors.Is(err, pretest.ErrTooMuchLoss) {
+		return &testFailure{"slow", err}
+	}
+	return &testFailure{"error", err}
 }
 
 // reservationProblem says plainly why the platform refused.

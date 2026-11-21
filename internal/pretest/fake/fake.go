@@ -19,6 +19,9 @@ import (
 type Options struct {
 	// PongDelay is added before each PONG.
 	PongDelay time.Duration
+	// Latency stands for a round trip: it is added before each PONG, the
+	// first DATA of the download, UPRESULT and BYE.
+	Latency time.Duration
 	// Drop, if set, says which PINGs go unanswered.
 	Drop func(seq uint32) bool
 	// LatePongs answers dropped PINGs anyway, this long after they came.
@@ -62,11 +65,12 @@ func Serve(conn net.Conn, o Options) error {
 				}
 				continue
 			}
-			time.Sleep(o.PongDelay)
+			time.Sleep(o.PongDelay + o.Latency)
 			if err := w.write(pong, nil); err != nil {
 				return err
 			}
 		case pretest.TypeDown:
+			time.Sleep(o.Latency)
 			start := time.Now()
 			var sent uint64
 			for sent < uint64(f.Bytes) {
@@ -97,6 +101,7 @@ func Serve(conn net.Conn, o Options) error {
 			}
 			pace(upStart, upGot-upFirst, o.UpRate)
 		case pretest.TypeEnd:
+			time.Sleep(o.Latency)
 			var elapsed uint64
 			if upFrames > 0 {
 				elapsed = uint64(time.Since(upStart).Microseconds())
@@ -105,6 +110,7 @@ func Serve(conn net.Conn, o Options) error {
 				return err
 			}
 		case pretest.TypeBye:
+			time.Sleep(o.Latency)
 			return w.write(pretest.Frame{Type: pretest.TypeBye}, nil)
 		default:
 			w.write(pretest.Frame{Type: pretest.TypeErr, Code: 1, Reason: "protocol"}, nil)

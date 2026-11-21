@@ -55,7 +55,7 @@ func TestFastMachine(t *testing.T) {
 }
 
 func TestSlowLossyMachine(t *testing.T) {
-	defer pretest.SetTimings(10*time.Millisecond, 200*time.Millisecond, time.Second)()
+	defer pretest.SetTimings(10*time.Millisecond, 200*time.Millisecond, 5*time.Second, time.Second)()
 	lim := pretest.Limits{Pings: 12, MaxDownBytes: 400_000, MaxUpBytes: 2_000_000, MaxSeconds: 10}
 	r, err, _ := run(t, lim, fake.Options{
 		PongDelay: 30 * time.Millisecond,
@@ -84,8 +84,51 @@ func TestSlowLossyMachine(t *testing.T) {
 	}
 }
 
+// A distant machine, 150 ms away, on a modest line: the ping window and the
+// download and upload windows keep the whole test within the ticket's 10 s,
+// at the platform's full limits.
+func TestDistantMachine(t *testing.T) {
+	r, err, took := run(t, ticket, fake.Options{
+		Latency:  150 * time.Millisecond,
+		DownRate: 2_500_000, // 20 Mbit/s: 10 MB would take 4 s
+		UpRate:   1_000_000, // 8 Mbit/s
+		MaxDown:  3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("%v after %v", err, took)
+	}
+	if took > 10*time.Second {
+		t.Errorf("took %v", took)
+	}
+	// About 2.5 s / (150 + 50 ms) pings, not all 20.
+	if r.PingsSent >= 20 || r.PingsAnswered < 10 {
+		t.Errorf("pings %d sent, %d answered", r.PingsSent, r.PingsAnswered)
+	}
+	if r.LatencyMS < 150 || r.LatencyMS > 200 {
+		t.Errorf("latency %.1f ms", r.LatencyMS)
+	}
+	if math.Abs(r.DownMbps-20) > 3 || math.Abs(r.UpMbps-8) > 1.5 {
+		t.Errorf("down %.1f, up %.1f Mbit/s", r.DownMbps, r.UpMbps)
+	}
+	if r.DownBytes >= ticket.MaxDownBytes || r.UpBytes >= ticket.MaxUpBytes {
+		t.Errorf("windows did not stop the transfers: %d down, %d up", r.DownBytes, r.UpBytes)
+	}
+	t.Logf("%v: %+v", took, r)
+}
+
+// Fewer than MinPings answers in the ping window fails the test, even when
+// fewer than half are lost.
+func TestTooFewPings(t *testing.T) {
+	defer pretest.SetTimings(10*time.Millisecond, time.Second, 300*time.Millisecond, time.Second)()
+	_, err, took := run(t, pretest.Limits{Pings: 20, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 10},
+		fake.Options{PongDelay: 120 * time.Millisecond})
+	if !errors.Is(err, pretest.ErrTooMuchLoss) || took > time.Second {
+		t.Fatalf("got %v after %v, want ErrTooMuchLoss", err, took)
+	}
+}
+
 func TestTooMuchLoss(t *testing.T) {
-	defer pretest.SetTimings(10*time.Millisecond, 100*time.Millisecond, time.Second)()
+	defer pretest.SetTimings(10*time.Millisecond, 100*time.Millisecond, 5*time.Second, time.Second)()
 	_, err, took := run(t, pretest.Limits{Pings: 10, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 10},
 		fake.Options{Drop: func(seq uint32) bool { return seq%2 == 1 || seq > 6 }})
 	if !errors.Is(err, pretest.ErrTooMuchLoss) {
@@ -99,7 +142,7 @@ func TestTooMuchLoss(t *testing.T) {
 
 func TestTimeLimit(t *testing.T) {
 	// 10 MB at 1 MB/s cannot be fetched in the ticket's 2 seconds.
-	_, err, took := run(t, pretest.Limits{Pings: 2, MaxDownBytes: 10_000_000, MaxUpBytes: 1000, MaxSeconds: 2},
+	_, err, took := run(t, pretest.Limits{Pings: 3, MaxDownBytes: 10_000_000, MaxUpBytes: 1000, MaxSeconds: 2},
 		fake.Options{DownRate: 1_000_000})
 	if !errors.Is(err, pretest.ErrTimeout) {
 		t.Fatalf("got %v, want ErrTimeout", err)
@@ -111,7 +154,7 @@ func TestTimeLimit(t *testing.T) {
 
 func TestMachineError(t *testing.T) {
 	for _, phase := range []byte{pretest.TypePing, pretest.TypeDown, pretest.TypeUp, pretest.TypeBye} {
-		_, err, _ := run(t, pretest.Limits{Pings: 1, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 5},
+		_, err, _ := run(t, pretest.Limits{Pings: 3, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 5},
 			fake.Options{FailOn: phase, FailCode: 3, FailReason: "budget"})
 		var re *pretest.RemoteError
 		if !errors.As(err, &re) || re.Code != 3 || re.Reason != "budget" {

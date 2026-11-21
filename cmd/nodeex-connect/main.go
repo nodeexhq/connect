@@ -150,8 +150,15 @@ func main() {
 	default:
 		usage()
 	}
-	if err != nil {
+	var failed *testFailure
+	if errors.As(err, &failed) {
+		// A test that ran and failed is an outcome the app shows as such.
+		log.Printf("the test failed: %v", failed.Err)
+		emit("test_failed", map[string]any{"reason": failed.Reason, "message": failed.Error()})
+	} else if err != nil {
 		emit("error", map[string]any{"message": err.Error()})
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "nodeex-connect:", err)
 		os.Exit(1)
 	}

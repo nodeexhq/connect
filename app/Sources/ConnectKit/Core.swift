@@ -25,6 +25,9 @@ public struct CoreEvent: Decodable, Equatable {
     public var jitterMs: Double?
     public var downMbps: Double?
     public var upMbps: Double?
+    /// Why a connection test failed (test_failed): "slow" when the
+    /// connection was too poor to finish it, "error" otherwise.
+    public var reason: String?
     public var message: String?
     /// A machine check: "ok" or "mismatch", and what did not match. For a
     /// connection test, the platform's rating.
@@ -35,7 +38,7 @@ public struct CoreEvent: Decodable, Equatable {
     public var refund: String?
 
     enum CodingKeys: String, CodingKey {
-        case event, account, password, note, direct, relay, message, verdict, problems, refunded, refund
+        case event, account, password, note, direct, relay, message, verdict, problems, refunded, refund, reason
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
         case jitterMs = "jitter_ms", downMbps = "down_mbps", upMbps = "up_mbps"

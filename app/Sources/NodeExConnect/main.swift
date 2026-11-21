@@ -57,6 +57,9 @@ final class ConnectModel: ObservableObject {
         case reaching
         case measuring
         case done(TestOutcome)
+        /// The test could not finish because the connection is too poor:
+        /// a verdict without figures.
+        case slow(String)
         case failed(String)
     }
 
@@ -214,6 +217,9 @@ final class ConnectModel: ObservableObject {
                 self.test = .measuring
             case "test_result":
                 if let outcome = TestOutcome(e) { self.test = .done(outcome) }
+            case "test_failed":
+                let message = e.message ?? "The test could not finish."
+                self.test = e.reason == "slow" ? .slow(message) : .failed(message)
             default:
                 break
             }
@@ -222,11 +228,12 @@ final class ConnectModel: ObservableObject {
             // A test cancelled from its window has already been let go.
             guard let self, let p, self.testProcess === p else { return }
             self.testProcess = nil
-            if let err {
-                self.test = .failed(err)
-            } else if case .done = self.test {
-            } else if self.test != .idle {
-                self.test = .failed("The test stopped before it finished.")
+            switch self.test {
+            case .done, .slow, .failed, .idle:
+                // The core has said how it ended.
+                break
+            default:
+                self.test = .failed(err ?? "The test stopped before it finished.")
             }
         }
         do {
@@ -471,6 +478,19 @@ struct TestView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                Button("Close") { model.cancelTest() }
+                    .keyboardShortcut(.defaultAction)
+            case .slow(let message):
+                Text("May lag")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                Text(message)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Go back to the browser to try another machine.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
                 Button("Close") { model.cancelTest() }
                     .keyboardShortcut(.defaultAction)
             case .failed(let message):
