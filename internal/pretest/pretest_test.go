@@ -1,250 +1,258 @@
-package pretest_test
+package pretest
 
 import (
-	"bufio"
-	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
-	"math"
+	"io"
 	"net"
 	"testing"
 	"time"
-
-	"github.com/nodeexhq/connect/internal/pretest"
-	"github.com/nodeexhq/connect/internal/pretest/fake"
 )
 
-var ticket = pretest.Limits{Pings: 20, MaxDownBytes: 10_000_000, MaxUpBytes: 10_000_000, MaxSeconds: 10}
-
-// run runs the client against a fake machine over an in-memory connection.
-func run(t *testing.T, lim pretest.Limits, o fake.Options) (pretest.Result, error, time.Duration) {
+// pair returns the two ends of a loopback TCP connection, so the test runs
+// over a real socket with real buffering.
+func pair(t *testing.T) (client, server net.Conn) {
 	t.Helper()
-	c, s := net.Pipe()
-	defer c.Close()
-	served := make(chan error, 1)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	accepted := make(chan net.Conn, 1)
 	go func() {
-		defer s.Close()
-		served <- fake.Serve(s, o)
+		c, _ := ln.Accept()
+		accepted <- c
 	}()
-	start := time.Now()
-	r, err := pretest.Run(context.Background(), c, lim)
-	took := time.Since(start)
-	c.Close()
-	<-served
-	return r, err, took
-}
-
-func TestFastMachine(t *testing.T) {
-	r, err, took := run(t, ticket, fake.Options{})
+	client, err = net.Dial("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.PingsSent != 20 || r.PingsAnswered != 20 {
-		t.Errorf("pings %d sent, %d answered", r.PingsSent, r.PingsAnswered)
-	}
-	if r.DownBytes != ticket.MaxDownBytes || r.UpBytes != ticket.MaxUpBytes {
-		t.Errorf("moved %d down, %d up; the ticket allows %d and %d", r.DownBytes, r.UpBytes, ticket.MaxDownBytes, ticket.MaxUpBytes)
-	}
-	if r.LatencyMS <= 0 || r.LatencyMS > 20 || r.DownMbps < 50 || r.UpMbps < 50 {
-		t.Errorf("an in-memory machine measured %+v", r)
-	}
-	// 19 pauses of 50 ms between pings, then the data.
-	if took < 19*50*time.Millisecond || took > 5*time.Second {
-		t.Errorf("took %v", took)
-	}
+	server = <-accepted
+	t.Cleanup(func() { client.Close(); server.Close() })
+	return client, server
 }
 
-func TestSlowLossyMachine(t *testing.T) {
-	defer pretest.SetTimings(10*time.Millisecond, 200*time.Millisecond, 5*time.Second, time.Second)()
-	lim := pretest.Limits{Pings: 12, MaxDownBytes: 400_000, MaxUpBytes: 2_000_000, MaxSeconds: 10}
-	r, err, _ := run(t, lim, fake.Options{
-		PongDelay: 30 * time.Millisecond,
-		// Every fourth ping is lost, and answered long after the client
-		// has moved on: the late answer must not count or confuse it.
-		Drop:      func(seq uint32) bool { return seq%4 == 0 },
-		LatePongs: 250 * time.Millisecond,
-		DownRate:  1_000_000, // 8 Mbit/s
-		UpRate:    500_000,   // 4 Mbit/s
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.PingsSent != 12 || r.PingsAnswered != 9 {
-		t.Errorf("pings %d sent, %d answered; want 12 and 9", r.PingsSent, r.PingsAnswered)
-	}
-	if r.LatencyMS < 30 || r.LatencyMS > 60 {
-		t.Errorf("latency %.1f ms, want about 30", r.LatencyMS)
-	}
-	if math.Abs(r.DownMbps-8) > 1.5 {
-		t.Errorf("down %.2f Mbit/s, want about 8", r.DownMbps)
-	}
-	// The upload stops at 1 s here: 2 MB would take 4 s at 4 Mbit/s.
-	if math.Abs(r.UpMbps-4) > 1 || r.UpBytes > lim.MaxUpBytes {
-		t.Errorf("up %.2f Mbit/s, %d bytes; want about 4 Mbit/s", r.UpMbps, r.UpBytes)
-	}
+type served struct {
+	rep Report
+	err error
 }
 
-// A distant machine, 150 ms away, on a modest line: the ping window and the
-// download and upload windows keep the whole test within the ticket's 10 s,
-// at the platform's full limits.
-func TestDistantMachine(t *testing.T) {
-	r, err, took := run(t, ticket, fake.Options{
-		Latency:  150 * time.Millisecond,
-		DownRate: 2_500_000, // 20 Mbit/s: 10 MB would take 4 s
-		UpRate:   1_000_000, // 8 Mbit/s
-		MaxDown:  3 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("%v after %v", err, took)
-	}
-	if took > 10*time.Second {
-		t.Errorf("took %v", took)
-	}
-	// About 2.5 s / (150 + 50 ms) pings, not all 20.
-	if r.PingsSent >= 20 || r.PingsAnswered < 10 {
-		t.Errorf("pings %d sent, %d answered", r.PingsSent, r.PingsAnswered)
-	}
-	if r.LatencyMS < 150 || r.LatencyMS > 200 {
-		t.Errorf("latency %.1f ms", r.LatencyMS)
-	}
-	if math.Abs(r.DownMbps-20) > 3 || math.Abs(r.UpMbps-8) > 1.5 {
-		t.Errorf("down %.1f, up %.1f Mbit/s", r.DownMbps, r.UpMbps)
-	}
-	if r.DownBytes >= ticket.MaxDownBytes || r.UpBytes >= ticket.MaxUpBytes {
-		t.Errorf("windows did not stop the transfers: %d down, %d up", r.DownBytes, r.UpBytes)
-	}
-	t.Logf("%v: %+v", took, r)
+func serve(server net.Conn, lim Limits) <-chan served {
+	done := make(chan served, 1)
+	go func() {
+		rep, err := Serve(server, lim, time.Now())
+		done <- served{rep, err}
+	}()
+	return done
 }
 
-// Fewer than MinPings answers in the ping window fails the test, even when
-// fewer than half are lost.
-func TestTooFewPings(t *testing.T) {
-	defer pretest.SetTimings(10*time.Millisecond, time.Second, 300*time.Millisecond, time.Second)()
-	_, err, took := run(t, pretest.Limits{Pings: 20, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 10},
-		fake.Options{PongDelay: 120 * time.Millisecond})
-	if !errors.Is(err, pretest.ErrTooMuchLoss) || took > time.Second {
-		t.Fatalf("got %v after %v, want ErrTooMuchLoss", err, took)
-	}
-}
-
-func TestTooMuchLoss(t *testing.T) {
-	defer pretest.SetTimings(10*time.Millisecond, 100*time.Millisecond, 5*time.Second, time.Second)()
-	_, err, took := run(t, pretest.Limits{Pings: 10, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 10},
-		fake.Options{Drop: func(seq uint32) bool { return seq%2 == 1 || seq > 6 }})
-	if !errors.Is(err, pretest.ErrTooMuchLoss) {
-		t.Fatalf("got %v, want ErrTooMuchLoss", err)
-	}
-	// It gives up at the sixth loss (ping 9) instead of waiting out ping 10.
-	if took > 1500*time.Millisecond {
-		t.Errorf("took %v to give up", took)
-	}
-}
-
-func TestTimeLimit(t *testing.T) {
-	// 10 MB at 1 MB/s cannot be fetched in the ticket's 2 seconds.
-	_, err, took := run(t, pretest.Limits{Pings: 3, MaxDownBytes: 10_000_000, MaxUpBytes: 1000, MaxSeconds: 2},
-		fake.Options{DownRate: 1_000_000})
-	if !errors.Is(err, pretest.ErrTimeout) {
-		t.Fatalf("got %v, want ErrTimeout", err)
-	}
-	if took > 3*time.Second {
-		t.Errorf("took %v, the ticket allows 2 s", took)
-	}
-}
-
-func TestMachineError(t *testing.T) {
-	for _, phase := range []byte{pretest.TypePing, pretest.TypeDown, pretest.TypeUp, pretest.TypeBye} {
-		_, err, _ := run(t, pretest.Limits{Pings: 3, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 5},
-			fake.Options{FailOn: phase, FailCode: 3, FailReason: "budget"})
-		var re *pretest.RemoteError
-		if !errors.As(err, &re) || re.Code != 3 || re.Reason != "budget" {
-			t.Errorf("ERR on 0x%02x: got %v", phase, err)
-		}
-	}
-}
-
-func TestCancel(t *testing.T) {
-	c, s := net.Pipe()
-	defer c.Close()
-	defer s.Close()
-	go fake.Serve(s, fake.Options{PongDelay: time.Hour})
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+func TestFullTest(t *testing.T) {
+	client, server := pair(t)
+	lim := defaultLimits()
+	done := serve(server, lim)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if _, err := pretest.Run(ctx, c, ticket); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got %v", err)
+	res, err := Run(ctx, client, OptionsFor(lim))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	s := <-done
+	if s.err != nil || !s.rep.Complete {
+		t.Fatalf("Serve: %+v, %v", s.rep, s.err)
+	}
+
+	if len(res.RTTs) != lim.Pings || s.rep.Pings != lim.Pings {
+		t.Errorf("%d RTTs, server saw %d pings; want %d", len(res.RTTs), s.rep.Pings, lim.Pings)
+	}
+	if m := res.RTTMin(); m <= 0 || res.RTTMedian() > 50*time.Millisecond {
+		t.Errorf("loopback RTT min %s median %s", m, res.RTTMedian())
+	}
+	if res.DownReceived != lim.MaxDownBytes || res.DownServerSent != lim.MaxDownBytes || s.rep.DownSent != lim.MaxDownBytes {
+		t.Errorf("download: received %d, server sent %d (%d)", res.DownReceived, res.DownServerSent, s.rep.DownSent)
+	}
+	if res.DownCounted != res.DownReceived-MaxData || res.DownElapsed <= 0 || res.DownServerElapsed <= 0 {
+		t.Errorf("download counted %d of %d in %s (server %s)", res.DownCounted, res.DownReceived, res.DownElapsed, res.DownServerElapsed)
+	}
+	if res.UpSent != lim.MaxUpBytes || res.UpReceived != res.UpSent || s.rep.UpReceived != res.UpSent {
+		t.Errorf("upload: sent %d, received %d (%d)", res.UpSent, res.UpReceived, s.rep.UpReceived)
+	}
+	if res.UpCounted != res.UpReceived-MaxData || res.UpElapsed <= 0 {
+		t.Errorf("upload counted %d of %d in %s", res.UpCounted, res.UpReceived, res.UpElapsed)
+	}
+	// Loopback moves 10 MB in well under a second; anything slower than
+	// 50 Mbit/s here means the measurement is wrong, not the link.
+	if res.DownMbps() < 50 || res.UpMbps() < 50 {
+		t.Errorf("throughput down %.0f, up %.0f Mbit/s", res.DownMbps(), res.UpMbps())
+	}
+	// What the test is charged: all of it, both ways, headers included.
+	payload := lim.MaxDownBytes + lim.MaxUpBytes
+	if m := s.rep.Moved(); m < payload || m > payload+payload/100 {
+		t.Errorf("moved %d bytes for %d of payload", m, payload)
+	}
+	t.Logf("rtt %s, down %.0f Mbit/s, up %.0f Mbit/s, moved %d", res.RTTMedian(), res.DownMbps(), res.UpMbps(), s.rep.Moved())
+}
+
+// The client may ask for less than the token allows, down to nothing.
+func TestEmptyTest(t *testing.T) {
+	client, server := pair(t)
+	done := serve(server, Limits{MaxSeconds: 5})
+	res, err := Run(context.Background(), client, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := <-done; s.err != nil || !s.rep.Complete || res.DownReceived != 0 || res.UpReceived != 0 || res.UpElapsed != 0 {
+		t.Errorf("empty test: %+v / %+v, %v", res, s.rep, s.err)
 	}
 }
 
-func TestBadLimits(t *testing.T) {
-	c, _ := net.Pipe()
-	defer c.Close()
-	if _, err := pretest.Run(context.Background(), c, pretest.Limits{Pings: 0, MaxSeconds: 10}); err == nil {
-		t.Fatal("a ticket with no pings ran")
+func wantRefusal(t *testing.T, name string, err error, code byte) {
+	t.Helper()
+	var e *Error
+	if !errors.As(err, &e) || e.Code != code {
+		t.Errorf("%s: %v, want ERR code %d", name, err, code)
 	}
 }
 
-func TestMedianJitter(t *testing.T) {
-	cases := []struct {
-		xs             []float64
-		median, jitter float64
-	}{
-		{nil, 0, 0},
-		{[]float64{40}, 40, 0},
-		{[]float64{30, 50}, 40, 20},
-		{[]float64{38, 42, 36, 40, 90}, 40, (4 + 6 + 4 + 50) / 4.0},
-		{[]float64{10, 10, 10, 10}, 10, 0},
-	}
-	for _, c := range cases {
-		if m := pretest.Median(c.xs); m != c.median {
-			t.Errorf("Median(%v) = %v, want %v", c.xs, m, c.median)
+func TestClientOverLimits(t *testing.T) {
+	lim := Limits{Pings: 3, MaxDownBytes: 50_000, MaxUpBytes: 50_000, MaxSeconds: 5}
+	for name, opt := range map[string]Options{
+		"too many pings":   {Pings: 4},
+		"download too big": {Pings: 3, DownBytes: 50_001},
+		"upload too big":   {Pings: 3, DownBytes: 1000, UpBytes: 2_000_000},
+	} {
+		client, server := pair(t)
+		done := serve(server, lim)
+		_, err := Run(context.Background(), client, opt)
+		wantRefusal(t, name, err, CodeOverLimit)
+		if s := <-done; s.err == nil || s.rep.Complete {
+			t.Errorf("%s: server %+v, %v", name, s.rep, s.err)
 		}
-		if j := pretest.Jitter(c.xs); math.Abs(j-c.jitter) > 1e-9 {
-			t.Errorf("Jitter(%v) = %v, want %v", c.xs, j, c.jitter)
-		}
-	}
-	// Median does not reorder its argument: jitter follows arrival order.
-	xs := []float64{3, 1, 2}
-	pretest.Median(xs)
-	if xs[0] != 3 {
-		t.Error("Median sorted its argument")
 	}
 }
 
-func TestFrameEncoding(t *testing.T) {
-	frames := []pretest.Frame{
-		{Type: pretest.TypePing, Seq: 7, T: 1 << 40},
-		{Type: pretest.TypePong, Seq: 7, T: 1 << 40},
-		{Type: pretest.TypeDown, Bytes: 10_000_000},
-		{Type: pretest.TypeDone, Sent: 9, Elapsed: 10},
-		{Type: pretest.TypeUp, Bytes: 5},
-		{Type: pretest.TypeEnd, Sent: 5},
-		{Type: pretest.TypeUpResult, Received: 1, Counted: 2, Elapsed: 3},
-		{Type: pretest.TypeBye},
-		{Type: pretest.TypeErr, Code: 9, Reason: "busy"},
-	}
-	var b []byte
-	for _, f := range frames {
-		b = pretest.AppendFrame(b, f, nil)
-	}
-	b = pretest.AppendFrame(b, pretest.Frame{Type: pretest.TypeData}, []byte("hello"))
-	// The wire format, byte for byte, for two of them.
-	if !bytes.HasPrefix(b, []byte{0x01, 0, 0, 0, 7, 0, 0, 1, 0, 0, 0, 0, 0}) {
-		t.Errorf("PING encoded as % x", b[:13])
-	}
-	if !bytes.HasSuffix(b, []byte{0x11, 0, 5, 'h', 'e', 'l', 'l', 'o'}) {
-		t.Errorf("DATA encoded as % x", b[len(b)-8:])
-	}
-	r := bufio.NewReader(bytes.NewReader(b))
-	for _, want := range frames {
-		got, err := pretest.ReadFrame(r)
-		if err != nil || got != want {
-			t.Errorf("read %+v, %v; want %+v", got, err, want)
+// raw drives the server frame by frame, as a misbehaving client would.
+type raw struct {
+	t    *testing.T
+	conn net.Conn
+}
+
+func (r raw) send(b ...[]byte) {
+	for _, f := range b {
+		if _, err := r.conn.Write(f); err != nil {
+			r.t.Logf("write: %v", err)
+			return
 		}
 	}
-	if got, err := pretest.ReadFrame(r); err != nil || got.Type != pretest.TypeData || got.Len != 5 {
-		t.Errorf("DATA read as %+v, %v", got, err)
+}
+
+// until reads frames until an ERR or the end, and returns the ERR.
+func (r raw) until() error {
+	for {
+		_, _, err := readFrame(r.conn, nil)
+		if err != nil {
+			r.conn.(*net.TCPConn).CloseWrite()
+			return err
+		}
 	}
-	if _, err := pretest.ReadFrame(bufio.NewReader(bytes.NewReader([]byte{0x55}))); !errors.Is(err, pretest.ErrProtocol) {
-		t.Errorf("unknown type: %v", err)
+}
+
+func data(n int) []byte {
+	b := []byte{FrameData, 0, 0}
+	binary.BigEndian.PutUint16(b[1:], uint16(n))
+	return append(b, make([]byte, n)...)
+}
+
+func TestUploadBeyondRequest(t *testing.T) {
+	client, server := pair(t)
+	done := serve(server, Limits{MaxDownBytes: 0, MaxUpBytes: 1000, MaxSeconds: 5})
+	r := raw{t, client}
+	go r.send(frame(FrameDown, 0, 0), frame(FrameUp, 100), data(60), data(60))
+	wantRefusal(t, "upload beyond its request", r.until(), CodeOverLimit)
+	if s := <-done; s.rep.UpReceived != 120 || s.rep.Complete {
+		t.Errorf("server: %+v, %v", s.rep, s.err)
 	}
+}
+
+func TestMalformedFrames(t *testing.T) {
+	lim := Limits{Pings: 1, MaxDownBytes: 1000, MaxUpBytes: 1000, MaxSeconds: 5}
+	ping := frame(FramePing, 0, 0)
+	for name, frames := range map[string][][]byte{
+		"unknown type":        {{0x55}},
+		"empty DATA":          {ping, frame(FrameDown, 0, 0), frame(FrameUp, 10), {FrameData, 0, 0}},
+		"oversized DATA":      {ping, frame(FrameDown, 0, 0), frame(FrameUp, 10), {FrameData, 0x50, 0}},
+		"DOWN before pings":   {frame(FrameDown, 10, 0)},
+		"UP before DOWN":      {ping, frame(FrameUp, 10)},
+		"BYE first":           {{FrameBye}},
+		"DATA during pings":   {data(10)},
+		"server frame":        {ping, {FramePong, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		"second DOWN":         {ping, frame(FrameDown, 0, 0), frame(FrameDown, 0, 0)},
+		"BYE before UPRESULT": {ping, frame(FrameDown, 0, 0), frame(FrameUp, 10), {FrameBye}},
+		"ACK during pings":    {ping, frame(FrameAck, 0)},
+		"ACK beyond sent":     {ping, frame(FrameDown, 0, 0), frame(FrameAck, 5)},
+		"ACK during upload":   {ping, frame(FrameDown, 0, 0), frame(FrameUp, 10), frame(FrameAck, 0)},
+		"UP before final ACK": {ping, frame(FrameDown, 1000, 0), frame(FrameUp, 10)},
+	} {
+		client, server := pair(t)
+		done := serve(server, lim)
+		r := raw{t, client}
+		go r.send(frames...)
+		wantRefusal(t, name, r.until(), CodeProtocol)
+		if s := <-done; s.err == nil || s.rep.Complete {
+			t.Errorf("%s: server %+v, %v", name, s.rep, s.err)
+		}
+	}
+
+	// A frame cut short ends the test without an answer.
+	client, server := pair(t)
+	done := serve(server, lim)
+	client.Write([]byte{FramePing, 0, 0})
+	client.(*net.TCPConn).CloseWrite()
+	if s := <-done; !errors.Is(s.err, io.ErrUnexpectedEOF) {
+		t.Errorf("truncated frame: %v", s.err)
+	}
+}
+
+// The Miner closes the test MaxSeconds after OK, whatever the client does.
+func TestDeadline(t *testing.T) {
+	client, server := pair(t)
+	start := time.Now()
+	done := serve(server, Limits{Pings: 5, MaxSeconds: 1})
+	r := raw{t, client}
+	r.send(frame(FramePing, 0, 0)) // then nothing
+	wantRefusal(t, "stalled client", r.until(), CodeDeadline)
+	s := <-done
+	if el := time.Since(start); el < time.Second || el > 2*time.Second {
+		t.Errorf("closed after %s, want 1s", el)
+	}
+	if !containsDeadline(s.err) || s.rep.Pings != 1 {
+		t.Errorf("server: %+v, %v", s.rep, s.err)
+	}
+	// The connection is closed, not just answered.
+	client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := client.Read(make([]byte, 1)); err != io.EOF {
+		t.Errorf("after the deadline: %v", err)
+	}
+
+	// A client that keeps the server busy past the deadline (here by not
+	// reading the download) is cut off just the same.
+	client, server = pair(t)
+	start = time.Now()
+	done = serve(server, Limits{MaxDownBytes: 10_000_000, MaxSeconds: 1})
+	client.Write(frame(FrameDown, 10_000_000, 0))
+	if s := <-done; s.err == nil || time.Since(start) > 2*time.Second {
+		t.Errorf("unread download: %v after %s", s.err, time.Since(start))
+	}
+
+	// And a client running the test gets the refusal, not a hang.
+	client, server = pair(t)
+	done = serve(server, Limits{Pings: 50, MaxSeconds: 0})
+	_, err := Run(context.Background(), client, Options{Pings: 50})
+	wantRefusal(t, "zero seconds", err, CodeDeadline)
+	<-done
+}
+
+func containsDeadline(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }

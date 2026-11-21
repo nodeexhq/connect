@@ -197,7 +197,7 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 		p, err := ov.probe(c, node)
 		during <- probed{p, err}
 	}()
-	m, err := pretest.Run(ctx, conn, t.Limits)
+	m, err := pretest.Measure(ctx, conn, t.Limits)
 	conn.Close()
 	if err != nil {
 		if ctx.Err() != nil {
@@ -262,7 +262,7 @@ func (f *testFailure) Error() string {
 func (f *testFailure) Unwrap() error { return f.Err }
 
 func measureFailure(err error) error {
-	if errors.Is(err, pretest.ErrTimeout) || errors.Is(err, pretest.ErrTooMuchLoss) {
+	if errors.Is(err, pretest.ErrTimeout) || errors.Is(err, pretest.ErrTooFewPings) {
 		return &testFailure{"slow", err}
 	}
 	return &testFailure{"error", err}

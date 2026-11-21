@@ -1,427 +1,302 @@
 package pretest
 
 import (
-	"bufio"
 	"context"
-	"crypto/rand"
-	"errors"
+	crand "crypto/rand"
 	"fmt"
-	"io"
-	"math"
+	"math/rand/v2"
 	"net"
-	"os"
 	"slices"
 	"time"
 )
 
-// The client's timing, from the protocol.
-var (
-	pingInterval = 50 * time.Millisecond   // after a PONG, before the next PING
-	pingTimeout  = time.Second             // a PING not answered by then is lost
-	pingWindow   = 2500 * time.Millisecond // the ping phase stops after this
-	upDuration   = 3 * time.Second         // the upload stops sending after this
-)
-
-// MinPings is the fewest answered pings a test can be rated on.
-const MinPings = 3
-
-// Limits are a test ticket's caps, as the platform gives them. The client
-// never asks for more.
-type Limits struct {
-	Pings        int   `json:"pings"`
-	MaxDownBytes int64 `json:"max_down_bytes"`
-	MaxUpBytes   int64 `json:"max_up_bytes"`
-	MaxSeconds   int   `json:"max_seconds"`
+// Options say how much of a test the client runs. Each must be within the
+// test token's limits, or the Miner refuses the test part-way.
+type Options struct {
+	Pings     int // at most; the client stops after PingWindow, having sent at least one
+	DownBytes int64
+	UpBytes   int64
 }
 
-// Result is what one test measured.
+// OptionsFor is the whole test a token's limits allow.
+func OptionsFor(l Limits) Options {
+	l = l.Clamp()
+	return Options{Pings: l.Pings, DownBytes: l.MaxDownBytes, UpBytes: l.MaxUpBytes}
+}
+
+// Result is what the client measured, and what the server reported.
 type Result struct {
-	LatencyMS float64 // median round trip of the answered pings
-	JitterMS  float64 // mean change in round trip between consecutive answered pings
-	DownMbps  float64 // machine to this computer
-	UpMbps    float64 // this computer to the machine
+	// RTTs are the ping round trips, in the order sent.
+	RTTs []time.Duration
 
-	PingsSent, PingsAnswered int
-	DownBytes, UpBytes       int64
+	// Download, as received: bytes and the time from the first DATA
+	// frame's arrival to the last one's, with Counted leaving out the first
+	// frame (its arrival starts the clock).
+	DownReceived int64
+	DownCounted  int64
+	DownElapsed  time.Duration
+	// The server's DONE: what it sent, and over how long.
+	DownServerSent    int64
+	DownServerElapsed time.Duration
+
+	// Upload: what the client sent, and the server's UPRESULT.
+	UpSent     int64
+	UpReceived int64
+	UpCounted  int64
+	UpElapsed  time.Duration
 }
 
-// RemoteError is an ERR frame: the machine stopped the test.
-type RemoteError struct {
-	Code   byte
-	Reason string
-}
-
-func (e *RemoteError) Error() string {
-	if e.Reason == "" {
-		return fmt.Sprintf("the machine stopped the test (code %d)", e.Code)
+// RTTMin and RTTMedian summarise the pings; zero when there were none.
+func (r Result) RTTMin() time.Duration {
+	if len(r.RTTs) == 0 {
+		return 0
 	}
-	return "the machine stopped the test: " + e.Reason
+	return slices.Min(r.RTTs)
 }
 
-var (
-	// ErrTooMuchLoss: more than half the pings were lost, or fewer than
-	// MinPings were answered in the ping window.
-	ErrTooMuchLoss = errors.New("too few of the test's pings were answered: the connection to this machine is losing too much")
-	// ErrTimeout: the test did not finish within the ticket's time.
-	ErrTimeout = errors.New("the test did not finish in the time allowed: the connection to this machine is too slow")
-	// ErrClosed: the machine closed the connection before the test ended.
-	ErrClosed = errors.New("the machine closed the connection before the test finished")
-)
+func (r Result) RTTMedian() time.Duration {
+	if len(r.RTTs) == 0 {
+		return 0
+	}
+	s := slices.Clone(r.RTTs)
+	slices.Sort(s)
+	return s[len(s)/2]
+}
 
-var errWait = errors.New("pretest: waited long enough")
+// DownMbps and UpMbps are the throughput each way in megabits a second,
+// from the counted bytes; zero when too little was moved to tell.
+func (r Result) DownMbps() float64 { return mbps(r.DownCounted, r.DownElapsed) }
+func (r Result) UpMbps() float64   { return mbps(r.UpCounted, r.UpElapsed) }
 
-type received struct {
-	f   Frame
-	at  time.Time
-	err error
+func mbps(n int64, d time.Duration) float64 {
+	if n <= 0 || d <= 0 {
+		return 0
+	}
+	return float64(n) * 8 / d.Seconds() / 1e6
+}
+
+// Run performs the client's side of a test on conn, on which gate.Dial
+// with service "test" has just succeeded. It returns what it measured; a
+// refusal by the Miner is an *Error. ctx bounds the whole test (the Miner
+// closes it after the token's max_seconds in any case). Run does not close
+// conn, but conn is of no further use after it.
+func Run(ctx context.Context, conn net.Conn, opt Options) (Result, error) {
+	var res Result
+	if opt.Pings < 0 || opt.DownBytes < 0 || opt.UpBytes < 0 ||
+		opt.DownBytes > 1<<32-1 || opt.UpBytes > 1<<32-1 {
+		return res, fmt.Errorf("pretest: invalid options %+v", opt)
+	}
+	if d, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(d)
+	}
+	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Unix(1, 0)) })
+	c := &client{conn: conn, fr: startReader(conn)}
+	err := c.run(opt, &res)
+	stop()
+	// End the reader, then leave the connection as it was.
+	conn.SetReadDeadline(time.Unix(1, 0))
+	c.fr.stop()
+	conn.SetDeadline(time.Time{})
+	if err != nil && ctx.Err() != nil {
+		err = fmt.Errorf("pretest: %w (%w)", ctx.Err(), err)
+	}
+	return res, err
 }
 
 type client struct {
-	ctx    context.Context
-	conn   net.Conn
-	frames chan received
-	done   chan struct{}
-	epoch  time.Time
-	buf    []byte
+	conn net.Conn
+	fr   *frameReader
 }
 
-// Run runs the whole test on conn, which the gate has just accepted for the
-// test service, and returns what it measured. It sets conn's deadline to the
-// ticket's time limit; the caller closes conn.
-func Run(ctx context.Context, conn net.Conn, lim Limits) (Result, error) {
-	if lim.Pings < 1 || lim.MaxSeconds < 1 || lim.MaxDownBytes < 0 || lim.MaxUpBytes < 0 {
-		return Result{}, fmt.Errorf("the test ticket's limits are unusable: %+v", lim)
-	}
-	deadline := time.Now().Add(time.Duration(lim.MaxSeconds) * time.Second)
-	conn.SetDeadline(deadline)
-	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
-	defer stop()
-
-	c := &client{ctx: ctx, conn: conn, frames: make(chan received, 64), done: make(chan struct{}), epoch: time.Now()}
-	defer close(c.done)
-	go c.readLoop()
-
-	var r Result
-	err := c.ping(lim.Pings, &r)
-	if err == nil {
-		err = c.download(clampU32(lim.MaxDownBytes), &r)
-	}
-	if err == nil {
-		err = c.upload(clampU32(lim.MaxUpBytes), &r)
-	}
-	if err == nil {
-		err = c.bye()
-	}
-	return r, err
+func (c *client) next() (inFrame, error) {
+	f := <-c.fr.ch
+	return f, f.err
 }
 
-func clampU32(n int64) uint32 {
-	return uint32(min(max(n, 0), math.MaxUint32))
+// expect reads one frame of type want; an ERR comes back as *Error.
+func (c *client) expect(want byte) (inFrame, error) {
+	f, err := c.next()
+	if err != nil {
+		return f, err
+	}
+	if f.t != want {
+		return f, fmt.Errorf("%w: got frame 0x%02x, want 0x%02x", ErrProtocol, f.t, want)
+	}
+	return f, nil
 }
 
-func (c *client) readLoop() {
-	br := bufio.NewReaderSize(c.conn, 64<<10)
-	for {
-		f, err := ReadFrame(br)
-		select {
-		case c.frames <- received{f, time.Now(), err}:
-		case <-c.done:
-			return
+func (c *client) write(b []byte) error {
+	_, err := c.conn.Write(b)
+	return err
+}
+
+func (c *client) run(opt Options, res *Result) error {
+	// P.
+	epoch := time.Now()
+	for seq := range opt.Pings {
+		if seq > 0 && time.Since(epoch) >= PingWindow {
+			break
 		}
-		if err != nil {
-			return
-		}
-	}
-}
-
-// fail turns a connection error into what the renter should hear.
-func (c *client) fail(err error) error {
-	switch {
-	case c.ctx.Err() != nil:
-		return c.ctx.Err()
-	case errors.Is(err, os.ErrDeadlineExceeded):
-		return ErrTimeout
-	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, net.ErrClosed), errors.Is(err, io.ErrClosedPipe):
-		return ErrClosed
-	case errors.Is(err, ErrProtocol):
-		return err
-	}
-	return fmt.Errorf("the test connection failed: %w", err)
-}
-
-func (c *client) send(f Frame, payload []byte) error {
-	c.buf = AppendFrame(c.buf[:0], f, payload)
-	if _, err := c.conn.Write(c.buf); err != nil {
-		return c.fail(err)
-	}
-	return nil
-}
-
-// recv returns the next frame, or errWait if none came before until (zero:
-// wait for as long as the connection's deadline allows). An ERR frame is
-// returned as a *RemoteError.
-func (c *client) recv(until time.Time) (Frame, time.Time, error) {
-	var timeout <-chan time.Time
-	if !until.IsZero() {
-		t := time.NewTimer(time.Until(until))
-		defer t.Stop()
-		timeout = t.C
-	}
-	select {
-	case r := <-c.frames:
-		if r.err != nil {
-			return r.f, r.at, c.fail(r.err)
-		}
-		if r.f.Type == TypeErr {
-			return r.f, r.at, &RemoteError{r.f.Code, r.f.Reason}
-		}
-		return r.f, r.at, nil
-	case <-timeout:
-		return Frame{}, time.Time{}, errWait
-	}
-}
-
-func unexpected(phase string, f Frame) error {
-	return fmt.Errorf("%w (frame 0x%02x during the %s)", ErrProtocol, f.Type, phase)
-}
-
-// mono is this side's monotonic clock, in nanoseconds since the test began.
-func (c *client) mono(t time.Time) uint64 { return uint64(t.Sub(c.epoch)) }
-
-// ping sends at most n PINGs, one at a time, the next pingInterval after a
-// PONG or straight after a ping is lost, for at most pingWindow. It gives up
-// as soon as more than half of n are lost, since the test has failed by
-// then. A ping still unanswered when the window closes is not counted.
-func (c *client) ping(n int, r *Result) error {
-	var rtts []float64
-	lost := 0
-	end := time.Now().Add(pingWindow)
-	for seq := uint32(1); seq <= uint32(n) && time.Now().Before(end); seq++ {
-		sent := time.Now()
-		t := c.mono(sent)
-		if err := c.send(Frame{Type: TypePing, Seq: seq, T: t}, nil); err != nil {
+		sent := time.Since(epoch)
+		if err := c.write(frame(FramePing, uint64(seq), uint64(sent))); err != nil {
 			return err
 		}
-		r.PingsSent++
-		wait := sent.Add(pingTimeout)
-		cut := wait.After(end)
-		if cut {
-			wait = end
+		f, err := c.expect(FramePong)
+		if err != nil {
+			return err
 		}
-		answered := false
-		for !answered {
-			f, at, err := c.recv(wait)
-			if err == errWait {
-				break
-			}
-			if err != nil {
-				return err
-			}
-			switch {
-			case f.Type == TypePong && f.Seq == seq && f.T == t:
-				rtts = append(rtts, float64(c.mono(at)-f.T)/1e6)
-				answered = true
-			case f.Type == TypePong && f.Seq < seq:
-				// The late answer to a ping already counted as lost.
-			default:
-				return unexpected("ping", f)
-			}
+		if u32(f.body[:4]) != uint64(seq) || u64(f.body[4:]) != uint64(sent) {
+			return fmt.Errorf("%w: PONG does not echo PING %d", ErrProtocol, seq)
 		}
-		if !answered {
-			if cut {
-				break // the window closed while it was out
-			}
-			lost++
-			if lost > n/2 {
-				r.PingsAnswered = len(rtts)
-				return ErrTooMuchLoss
-			}
-			continue
+		res.RTTs = append(res.RTTs, f.at.Sub(epoch)-sent)
+	}
+	rtt := res.RTTMin()
+
+	// D.
+	rttUs := min(rtt.Microseconds(), 1<<32-1)
+	if err := c.write(frame(FrameDown, uint64(opt.DownBytes), uint64(rttUs))); err != nil {
+		return err
+	}
+	var ack acker
+	var t0, t1 time.Time
+	for {
+		f, err := c.next()
+		if err != nil {
+			return err
 		}
-		if int(seq) < n {
-			next := time.Now().Add(pingInterval)
-			if next.After(end) {
-				next = end
-			}
-			if err := c.idle(next, "ping"); err != nil {
+		if f.t == FrameDone {
+			res.DownServerSent = int64(u64(f.body[:8]))
+			res.DownServerElapsed = time.Duration(u64(f.body[8:])) * time.Microsecond
+			break
+		}
+		if f.t != FrameData {
+			return fmt.Errorf("%w: frame 0x%02x during download", ErrProtocol, f.t)
+		}
+		t1 = f.at
+		if t0.IsZero() {
+			t0 = t1
+		} else {
+			res.DownCounted += int64(f.n)
+		}
+		if ack.data(f.n) {
+			if err := c.write(ack.frame()); err != nil {
 				return err
 			}
 		}
 	}
-	r.PingsAnswered = len(rtts)
-	if len(rtts) < MinPings {
-		return ErrTooMuchLoss
+	res.DownReceived = ack.received
+	res.DownElapsed = t1.Sub(t0)
+	if res.DownReceived != res.DownServerSent {
+		return fmt.Errorf("%w: received %d download bytes, server sent %d", ErrProtocol, res.DownReceived, res.DownServerSent)
 	}
-	r.LatencyMS, r.JitterMS = Median(rtts), Jitter(rtts)
-	return nil
-}
-
-// idle waits until then, taking only late PONGs meanwhile.
-func (c *client) idle(then time.Time, phase string) error {
-	for {
-		f, _, err := c.recv(then)
-		if err == errWait {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if f.Type != TypePong {
-			return unexpected(phase, f)
-		}
-	}
-}
-
-// download asks for n bytes and times them from the end of the first DATA
-// frame to DONE, so that the time the first frame took to arrive (one round
-// trip) is not counted against the line's throughput.
-func (c *client) download(n uint32, r *Result) error {
-	if err := c.send(Frame{Type: TypeDown, Bytes: n}, nil); err != nil {
+	if err := c.write(ack.frame()); err != nil {
 		return err
 	}
-	var total int64
-	var first, frames int
-	var t0 time.Time
-	for {
-		f, at, err := c.recv(time.Time{})
-		if err != nil {
-			return err
-		}
-		switch f.Type {
-		case TypePong:
-			continue
-		case TypeData:
-			if frames == 0 {
-				first, t0 = f.Len, at
-			}
-			frames++
-			total += int64(f.Len)
-			if total > int64(n) {
-				return fmt.Errorf("%w: the machine sent more than was asked for", ErrProtocol)
-			}
-			continue
-		case TypeDone:
-		default:
-			return unexpected("download", f)
-		}
-		if f.Sent != uint64(total) {
-			return fmt.Errorf("%w: the machine says it sent %d bytes, %d arrived", ErrProtocol, f.Sent, total)
-		}
-		r.DownBytes = total
-		counted := int64(f.Sent) - int64(first)
-		if us := at.Sub(t0).Microseconds(); frames > 1 && counted > 0 && us > 0 {
-			r.DownMbps = float64(counted) * 8 / float64(us)
-		} else if f.Elapsed > 0 {
-			// Too little came to time it here: the machine's own figure.
-			r.DownMbps = float64(f.Sent) * 8 / float64(f.Elapsed)
-		}
-		return nil
-	}
-}
 
-// upload sends up to n bytes of random data, for at most upDuration, and
-// takes the machine's measure of them.
-func (c *client) upload(n uint32, r *Result) error {
-	if err := c.send(Frame{Type: TypeUp, Bytes: n}, nil); err != nil {
+	// U.
+	if err := c.write(frame(FrameUp, uint64(opt.UpBytes))); err != nil {
 		return err
 	}
-	frame := make([]byte, 3+MaxDataLen)
-	frame[0] = TypeData
-	rand.Read(frame[3:])
-	stop := time.Now().Add(upDuration)
-	var sent int64
-	for sent < int64(n) && time.Now().Before(stop) {
-		size := int(min(int64(MaxDataLen), int64(n)-sent))
-		frame[1], frame[2] = byte(size>>8), byte(size)
-		if _, err := c.conn.Write(frame[:3+size]); err != nil {
-			// The machine may have said why before it stopped reading.
-			if f, _, rerr := c.recv(time.Now().Add(100 * time.Millisecond)); rerr != nil && rerr != errWait {
-				return rerr
-			} else if rerr == nil && f.Type != TypePong {
-				return unexpected("upload", f)
-			}
-			return c.fail(err)
+	fl := &flow{rtt: rtt}
+	handle := func(f inFrame) error {
+		if f.err != nil {
+			return f.err
 		}
-		sent += int64(size)
-		// Nothing but a late PONG or an ERR may come meanwhile.
+		if f.t != FrameAck {
+			return fmt.Errorf("%w: frame 0x%02x during upload", ErrProtocol, f.t)
+		}
+		return fl.ack(int64(u64(f.body)), f.at)
+	}
+	var seed [32]byte
+	crand.Read(seed[:])
+	src := rand.NewChaCha8(seed)
+	out := make([]byte, 3+MaxData)
+	out[0] = FrameData
+	start := time.Now()
+	window := time.NewTimer(UpWindow)
+	defer window.Stop()
+stream:
+	for fl.sent < opt.UpBytes && time.Since(start) < UpWindow {
+		for {
+			var f inFrame
+			if fl.open() {
+				select {
+				case f = <-c.fr.ch:
+				default:
+				}
+				if f.at.IsZero() && f.err == nil {
+					break
+				}
+			} else {
+				select {
+				case f = <-c.fr.ch:
+				case <-window.C:
+					break stream
+				}
+			}
+			if err := handle(f); err != nil {
+				return err
+			}
+		}
+		size := int(min(opt.UpBytes-fl.sent, MaxData))
+		out[1], out[2] = byte(size>>8), byte(size)
+		src.Read(out[3 : 3+size])
+		if err := c.write(out[:3+size]); err != nil {
+			return c.refusal(err)
+		}
+		fl.wrote(size, time.Now())
+	}
+	res.UpSent = fl.sent
+	if err := c.write(frame(FrameEnd, uint64(fl.sent))); err != nil {
+		return c.refusal(err)
+	}
+	// ACKs up to the server's final one, then UPRESULT.
+	var f inFrame
+	for {
+		var err error
+		if f, err = c.next(); err != nil {
+			return err
+		}
+		if f.t != FrameAck {
+			break
+		}
+		if err := fl.ack(int64(u64(f.body)), f.at); err != nil {
+			return err
+		}
+	}
+	if f.t != FrameUpResult {
+		return fmt.Errorf("%w: got frame 0x%02x, want UPRESULT", ErrProtocol, f.t)
+	}
+	res.UpReceived = int64(u64(f.body[:8]))
+	res.UpCounted = int64(u64(f.body[8:16]))
+	res.UpElapsed = time.Duration(u64(f.body[16:])) * time.Microsecond
+	if fl.acked != fl.sent || res.UpReceived != fl.sent {
+		return fmt.Errorf("%w: sent %d upload bytes, %d acknowledged, %d received", ErrProtocol, fl.sent, fl.acked, res.UpReceived)
+	}
+
+	// B.
+	if err := c.write([]byte{FrameBye}); err != nil {
+		return err
+	}
+	_, err := c.expect(FrameBye)
+	return err
+}
+
+// refusal explains a failed upload write: the Miner may have sent an ERR
+// and closed before the client stopped sending.
+func (c *client) refusal(werr error) error {
+	timeout := time.After(time.Second)
+	for {
 		select {
-		case got := <-c.frames:
-			if got.err != nil {
-				return c.fail(got.err)
+		case f := <-c.fr.ch:
+			if e, ok := f.err.(*Error); ok {
+				return e
 			}
-			if got.f.Type == TypeErr {
-				return &RemoteError{got.f.Code, got.f.Reason}
+			if f.err != nil {
+				return werr
 			}
-			if got.f.Type != TypePong {
-				return unexpected("upload", got.f)
-			}
-		default:
+		case <-timeout:
+			return werr
 		}
 	}
-	r.UpBytes = sent
-	if err := c.send(Frame{Type: TypeEnd, Sent: uint64(sent)}, nil); err != nil {
-		return err
-	}
-	for {
-		f, _, err := c.recv(time.Time{})
-		if err != nil {
-			return err
-		}
-		switch f.Type {
-		case TypePong:
-			continue
-		case TypeUpResult:
-			if f.Elapsed > 0 {
-				r.UpMbps = float64(f.Counted) * 8 / float64(f.Elapsed)
-			}
-			return nil
-		default:
-			return unexpected("upload", f)
-		}
-	}
-}
-
-func (c *client) bye() error {
-	if err := c.send(Frame{Type: TypeBye}, nil); err != nil {
-		return err
-	}
-	for {
-		f, _, err := c.recv(time.Time{})
-		if err != nil {
-			return err
-		}
-		switch f.Type {
-		case TypePong:
-		case TypeBye:
-			return nil
-		default:
-			return unexpected("goodbye", f)
-		}
-	}
-}
-
-// Median of xs; 0 for none.
-func Median(xs []float64) float64 {
-	if len(xs) == 0 {
-		return 0
-	}
-	s := slices.Clone(xs)
-	slices.Sort(s)
-	if len(s)%2 == 1 {
-		return s[len(s)/2]
-	}
-	return (s[len(s)/2-1] + s[len(s)/2]) / 2
-}
-
-// Jitter is the mean absolute difference between consecutive samples; 0 for
-// fewer than two.
-func Jitter(xs []float64) float64 {
-	if len(xs) < 2 {
-		return 0
-	}
-	var sum float64
-	for i := 1; i < len(xs); i++ {
-		sum += math.Abs(xs[i] - xs[i-1])
-	}
-	return sum / float64(len(xs)-1)
 }

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/nodeexhq/connect/internal/pretest"
-	"github.com/nodeexhq/connect/internal/pretest/fake"
 	"github.com/nodeexhq/miner/overlay"
 )
 
@@ -83,13 +83,16 @@ func (p *testPlatform) serve(t *testing.T) *httptest.Server {
 // testOverlay is the overlay with one machine on it, whose gate answers
 // with reply and then runs a fake test.
 type testOverlay struct {
-	reply  string
-	opts   fake.Options
-	path   overlay.Path
-	cfg    overlay.Config
-	closed bool
-	gotTok string
-	dialed string
+	reply string
+	// machine is the limits the machine's test server keeps; the ticket's
+	// when nil.
+	machine *pretest.Limits
+	path    overlay.Path
+	cfg     overlay.Config
+	closed  bool
+	mu      sync.Mutex
+	gotTok  string
+	dialed  string
 }
 
 func (o *testOverlay) join(ctx context.Context, c overlay.Config) (overlayNet, error) {
@@ -97,20 +100,36 @@ func (o *testOverlay) join(ctx context.Context, c overlay.Config) (overlayNet, e
 	return overlayNet{
 		dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			o.dialed = addr
-			client, machine := net.Pipe()
+			// A real socket, as the overlay gives: the test's flow control
+			// expects one.
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				return nil, err
+			}
 			go func() {
+				defer ln.Close()
+				machine, err := ln.Accept()
+				if err != nil {
+					return
+				}
 				defer machine.Close()
 				line, err := bufio.NewReader(machine).ReadString('\n')
 				if err != nil {
 					return
 				}
+				o.mu.Lock()
 				o.gotTok = strings.TrimSpace(line)
+				o.mu.Unlock()
 				fmt.Fprintf(machine, "%s\n", o.reply)
 				if o.reply == "OK" {
-					fake.Serve(machine, o.opts)
+					lim := pretest.Limits{Pings: 5, MaxDownBytes: 200000, MaxUpBytes: 200000, MaxSeconds: 10}
+					if o.machine != nil {
+						lim = *o.machine
+					}
+					pretest.Serve(machine, lim, time.Now())
 				}
 			}()
-			return client, nil
+			return net.Dial("tcp", ln.Addr().String())
 		},
 		probe: func(ctx context.Context, peer netip.Addr) (overlay.Path, error) { return o.path, nil },
 		close: func() error { o.closed = true; return nil },
@@ -139,8 +158,11 @@ func TestRunTest(t *testing.T) {
 			if got.Verdict != c.verdict || got.LatencyMS != 38.2 || got.DownMbps != 52.3 || got.Direct != c.path.Direct {
 				t.Errorf("got %+v", got)
 			}
-			if o.gotTok != "NODEEX1 test TOKEN" || o.dialed != "100.64.0.7:7000" {
-				t.Errorf("gate got %q at %q", o.gotTok, o.dialed)
+			o.mu.Lock()
+			gotTok := o.gotTok
+			o.mu.Unlock()
+			if gotTok != "NODEEX1 test TOKEN" || o.dialed != "100.64.0.7:7000" {
+				t.Errorf("gate got %q at %q", gotTok, o.dialed)
 			}
 			if o.cfg.Hostname != "t-01234567" || o.cfg.ControlURL != "https://hs.example" || o.cfg.AuthKey != "KEY" {
 				t.Errorf("joined as %+v", o.cfg)
@@ -224,17 +246,19 @@ func TestRunTestRefusals(t *testing.T) {
 func TestRunTestFails(t *testing.T) {
 	for _, c := range []struct {
 		name   string
-		opts   fake.Options
+		lim    pretest.Limits
 		reason string
 		msg    string
 	}{
-		{"no answers", fake.Options{Drop: func(uint32) bool { return true }}, "slow", slowMessage},
-		{"machine error", fake.Options{FailOn: pretest.TypeDown, FailCode: 4, FailReason: "budget"}, "error", "stopped the test: budget"},
+		// The machine's own deadline comes first: ERR 3.
+		{"out of time", pretest.Limits{Pings: 5, MaxDownBytes: 200000, MaxUpBytes: 200000, MaxSeconds: 0}, "slow", slowMessage},
+		// It allows fewer pings than the ticket says: ERR 2.
+		{"machine error", pretest.Limits{Pings: 1, MaxDownBytes: 200000, MaxUpBytes: 200000, MaxSeconds: 5}, "error", "machine stopped the test"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &testPlatform{verdict: "ok"}
 			srv := p.serve(t)
-			o := &testOverlay{reply: "OK", opts: c.opts, path: overlay.Path{Direct: true}}
+			o := &testOverlay{reply: "OK", machine: &c.lim, path: overlay.Path{Direct: true}}
 			_, err := runTest(context.Background(), session{API: srv.URL, Token: "tok"}, testReservation, o.join)
 			var f *testFailure
 			if !errors.As(err, &f) || f.Reason != c.reason || !strings.Contains(f.Error(), c.msg) {
