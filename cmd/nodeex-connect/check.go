@@ -200,6 +200,8 @@ func checkLease(ctx context.Context, s session, dir, leaseID string, port int) {
 	var res struct {
 		Verdict  string   `json:"verdict"`
 		Problems []string `json:"problems"`
+		Refunded bool     `json:"refunded"`
+		Refund   string   `json:"refund"`
 	}
 	if err := call(ctx, s, "POST", "/v1/leases/"+leaseID+"/check", rep, &res); err != nil {
 		var ae *apiError
@@ -211,7 +213,7 @@ func checkLease(ctx context.Context, s session, dir, leaseID string, port int) {
 	a = loadAccess(dir, leaseID)
 	a.CheckedAt = time.Now()
 	saveAccess(dir, leaseID, a)
-	emit("check", map[string]any{"verdict": res.Verdict, "problems": res.Problems,
+	emit("check", map[string]any{"verdict": res.Verdict, "problems": res.Problems, "refunded": res.Refunded, "refund": res.Refund,
 		"cpu": rep.CPU, "cores": rep.Cores, "memory_bytes": rep.MemoryBytes, "disk_bytes": rep.DiskBytes, "tunnel_mbps": rep.TunnelMbps})
 	if res.Verdict == "ok" {
 		log.Printf("  machine check: matches what was ordered (%s, %d cores, %.0f GB memory, %.0f GB disk)",
@@ -222,5 +224,11 @@ func checkLease(ctx context.Context, s session, dir, leaseID string, port int) {
 	for _, p := range res.Problems {
 		log.Printf("    - %s", p)
 	}
-	log.Printf("  NodeEx has been told. If it is not what you ordered, write to hello@nodeex.com about a refund.")
+	if res.Refunded {
+		// The platform ends such a lease and refunds it in full by itself;
+		// the lease-ended check disconnects shortly after.
+		log.Printf("  NodeEx has ended the lease and refunded its rent in full (%s) to your balance.", res.Refund)
+		return
+	}
+	log.Printf("  NodeEx has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on.")
 }

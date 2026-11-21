@@ -215,7 +215,9 @@ final class ConnectModel: ObservableObject {
                     c.check = "Does not match what you ordered"
                     self.alert("This machine does not match what you ordered",
                                problems.map { "• " + $0 }.joined(separator: "\n")
-                               + "\n\nNodeEx has been told. If it is not what you ordered, write to hello@nodeex.com about a refund.")
+                               + (e.refunded == true
+                                  ? "\n\nNodeEx has ended the lease and refunded its rent in full" + (e.refund.map { " (\($0))" } ?? "") + " to your balance."
+                                  : "\n\nNodeEx has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on."))
                 }
             case "path":
                 if e.direct == true {

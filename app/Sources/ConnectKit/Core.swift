@@ -24,9 +24,12 @@ public struct CoreEvent: Decodable, Equatable {
     /// A machine check: "ok" or "mismatch", and what did not match.
     public var verdict: String?
     public var problems: [String]?
+    /// Whether the platform refunded the lease for the mismatch, and how much.
+    public var refunded: Bool?
+    public var refund: String?
 
     enum CodingKeys: String, CodingKey {
-        case event, account, password, note, direct, relay, message, verdict, problems
+        case event, account, password, note, direct, relay, message, verdict, problems, refunded, refund
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
         case privateFolder = "private", privateNote = "private_note", sshHost = "ssh_host"
