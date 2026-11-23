@@ -3,3 +3,4 @@
 /dist/
 .DS_Store
 cmd/nodeex-connect/guestbin/
+cmd/nodeex-connect/nodeex-connect
