@@ -3,7 +3,7 @@ module github.com/nvtohq/connect
 go 1.27.4
 
 require (
-	github.com/nvtohq/node v0.1.17
+	github.com/nvtohq/node v0.1.19
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
