@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds "NodeEx Connect.app": the Swift menu-bar app with the Go core inside
+# Builds "NVTO Connect.app": the Swift menu-bar app with the Go core inside
 # it, for both Apple silicon and Intel Macs, in app/dist/.
 #
 #   app/scripts/bundle.sh                          ad-hoc signature, for this Mac only
@@ -14,7 +14,7 @@ BUILD=${BUILD:-$(git -C "$REPO" rev-list --count HEAD 2>/dev/null || echo 1)}
 # Where the app looks for updates. Empty builds an app that never updates.
 FEED_URL=${FEED_URL-https://raw.githubusercontent.com/nodeexhq/connect/main/app/appcast.xml}
 DIST="$APP_DIR/dist"
-BUNDLE="$DIST/NodeEx Connect.app"
+BUNDLE="$DIST/NVTO Connect.app"
 
 (cd "$APP_DIR" && swift build -c release --arch arm64 --arch x86_64)
 BIN=$(cd "$APP_DIR" && swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
