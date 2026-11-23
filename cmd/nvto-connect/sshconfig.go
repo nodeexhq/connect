@@ -8,13 +8,13 @@ import (
 )
 
 // While a lease is open, Connect gives its machine a name in the user's SSH
-// configuration, so that `ssh nodeex-<lease>` works and so do the editors
+// configuration, so that `ssh nvto-<lease>` works and so do the editors
 // that connect over SSH (VS Code and Cursor Remote-SSH, JetBrains Gateway).
-// Each lease gets its own file under ~/.ssh/nodeex/, written when the
+// Each lease gets its own file under ~/.ssh/nvto/, written when the
 // machine is ready and removed when Connect disconnects; ~/.ssh/config gets
 // one line at its top that includes them.
 
-const sshInclude = "Include nodeex/*.conf"
+const sshInclude = "Include nvto/*.conf"
 
 // sshHost is the name a lease's machine goes by in SSH.
 func sshHost(leaseID string) string {
@@ -22,7 +22,7 @@ func sshHost(leaseID string) string {
 	if len(id) > 8 {
 		id = id[:8]
 	}
-	return "nodeex-" + id
+	return "nvto-" + id
 }
 
 func sshConfigDir() (string, error) {
@@ -30,7 +30,7 @@ func sshConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ssh", "nodeex"), nil
+	return filepath.Join(home, ".ssh", "nvto"), nil
 }
 
 // sshQuote wraps a value for an ssh_config line when it holds a space.
@@ -52,7 +52,7 @@ func writeSSHHost(stateDir, leaseID string, port int) (string, error) {
 		return "", err
 	}
 	host := sshHost(leaseID)
-	known := filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(host, "nodeex-"))
+	known := filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(host, "nvto-"))
 	entry := fmt.Sprintf(`# Written by NVTO Connect for lease %s while it is connected;
 # removed when Connect disconnects.
 Host %s
@@ -67,7 +67,7 @@ Host %s
   ServerAliveCountMax 4
   Compression yes
 `, leaseID, host, port, machineAccount, sshQuote(sshKeyPath(stateDir)), sshQuote(known))
-	if err := os.WriteFile(filepath.Join(dir, strings.TrimPrefix(host, "nodeex-")+".conf"), []byte(entry), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, strings.TrimPrefix(host, "nvto-")+".conf"), []byte(entry), 0o600); err != nil {
 		return "", err
 	}
 	return host, ensureSSHInclude(filepath.Dir(dir))
@@ -103,7 +103,7 @@ func removeSSHHost(leaseID string) {
 	if err != nil {
 		return
 	}
-	id := strings.TrimPrefix(sshHost(leaseID), "nodeex-")
+	id := strings.TrimPrefix(sshHost(leaseID), "nvto-")
 	os.Remove(filepath.Join(dir, id+".conf"))
 }
 
@@ -114,5 +114,5 @@ func forgetSSHHost(leaseID string) {
 	if err != nil {
 		return
 	}
-	os.Remove(filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(sshHost(leaseID), "nodeex-")))
+	os.Remove(filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(sshHost(leaseID), "nvto-")))
 }

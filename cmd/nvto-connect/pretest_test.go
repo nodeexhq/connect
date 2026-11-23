@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nodeexhq/connect/internal/pretest"
-	"github.com/nodeexhq/miner/overlay"
+	"github.com/nvtohq/connect/internal/pretest"
+	"github.com/nvtohq/node/overlay"
 )
 
 const testReservation = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
@@ -161,7 +161,7 @@ func TestRunTest(t *testing.T) {
 			o.mu.Lock()
 			gotTok := o.gotTok
 			o.mu.Unlock()
-			if gotTok != "NODEEX1 test TOKEN" || o.dialed != "100.64.0.7:7000" {
+			if gotTok != "NVTO1 test TOKEN" || o.dialed != "100.64.0.7:7000" {
 				t.Errorf("gate got %q at %q", gotTok, o.dialed)
 			}
 			if o.cfg.Hostname != "t-01234567" || o.cfg.ControlURL != "https://hs.example" || o.cfg.AuthKey != "KEY" {

@@ -1,6 +1,6 @@
 package pretest
 
-// Limits are a test ticket's caps, as the platform gives them (the Miner's
+// Limits are a test ticket's caps, as the platform gives them (the Node app's
 // leasetoken.TestLimits). The client never asks for more.
 type Limits struct {
 	Pings        int   `json:"pings"`
@@ -9,21 +9,21 @@ type Limits struct {
 	MaxSeconds   int   `json:"max_seconds"`
 }
 
-// The Miner's hard maxima, whatever a token says.
+// The Node app's hard maxima, whatever a token says.
 const (
-	MinerMaxPings     = 50
-	MinerMaxDownBytes = 10_000_000
-	MinerMaxUpBytes   = 10_000_000
-	MinerMaxSeconds   = 10
+	NodeMaxPings     = 50
+	NodeMaxDownBytes = 10_000_000
+	NodeMaxUpBytes   = 10_000_000
+	NodeMaxSeconds   = 10
 )
 
-// Clamp returns the limits a Miner applies: the token's, but never above its
+// Clamp returns the limits the Node app applies: the token's, but never above its
 // hard maxima.
 func (l Limits) Clamp() Limits {
 	return Limits{
-		Pings:        min(max(l.Pings, 0), MinerMaxPings),
-		MaxDownBytes: min(max(l.MaxDownBytes, 0), MinerMaxDownBytes),
-		MaxUpBytes:   min(max(l.MaxUpBytes, 0), MinerMaxUpBytes),
-		MaxSeconds:   min(max(l.MaxSeconds, 0), MinerMaxSeconds),
+		Pings:        min(max(l.Pings, 0), NodeMaxPings),
+		MaxDownBytes: min(max(l.MaxDownBytes, 0), NodeMaxDownBytes),
+		MaxUpBytes:   min(max(l.MaxUpBytes, 0), NodeMaxUpBytes),
+		MaxSeconds:   min(max(l.MaxSeconds, 0), NodeMaxSeconds),
 	}
 }

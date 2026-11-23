@@ -16,7 +16,7 @@ func TestBrowserLogin(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/auth/device":
 			json.NewEncoder(w).Encode(map[string]any{"device_code": "dc", "user_code": "BCDF-GHJK",
-				"verification_url": "https://nodeex.example/authorize?code=BCDF-GHJK", "expires_in": 30, "interval": 1})
+				"verification_url": "https://nvto.example/authorize?code=BCDF-GHJK", "expires_in": 30, "interval": 1})
 		case "/v1/auth/device/token":
 			var in struct {
 				DeviceCode string `json:"device_code"`

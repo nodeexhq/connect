@@ -4,17 +4,17 @@ import XCTest
 final class ConnectKitTests: XCTestCase {
     func testLinks() {
         let id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
-        XCTAssertEqual(LinkRequest(URL(string: "nodeex-connect://open?lease=\(id)&mode=ssh")!), .open(lease: id, mode: .ssh))
-        XCTAssertEqual(LinkRequest(URL(string: "nodeex-connect://open?lease=\(id.uppercased())")!), .open(lease: id, mode: .desktop))
-        XCTAssertEqual(LinkRequest(URL(string: "nodeex-connect://login")!), .signIn)
-        XCTAssertEqual(LinkRequest(URL(string: "nodeex-connect://test?reservation=\(id.uppercased())")!), .test(reservation: id))
-        XCTAssertNil(LinkRequest(URL(string: "nodeex-connect://test?reservation=../leases")!))
-        XCTAssertNil(LinkRequest(URL(string: "nodeex-connect://test?lease=\(id)")!))
+        XCTAssertEqual(LinkRequest(URL(string: "nvto-connect://open?lease=\(id)&mode=ssh")!), .open(lease: id, mode: .ssh))
+        XCTAssertEqual(LinkRequest(URL(string: "nvto-connect://open?lease=\(id.uppercased())")!), .open(lease: id, mode: .desktop))
+        XCTAssertEqual(LinkRequest(URL(string: "nvto-connect://login")!), .signIn)
+        XCTAssertEqual(LinkRequest(URL(string: "nvto-connect://test?reservation=\(id.uppercased())")!), .test(reservation: id))
+        XCTAssertNil(LinkRequest(URL(string: "nvto-connect://test?reservation=../leases")!))
+        XCTAssertNil(LinkRequest(URL(string: "nvto-connect://test?lease=\(id)")!))
         // Anything else is refused: other actions, other modes, things that
         // are not lease identifiers.
-        XCTAssertNil(LinkRequest(URL(string: "nodeex-connect://open?lease=../../etc&mode=ssh")!))
-        XCTAssertNil(LinkRequest(URL(string: "nodeex-connect://open?lease=\(id)&mode=shell")!))
-        XCTAssertNil(LinkRequest(URL(string: "nodeex-connect://run?cmd=ls")!))
+        XCTAssertNil(LinkRequest(URL(string: "nvto-connect://open?lease=../../etc&mode=ssh")!))
+        XCTAssertNil(LinkRequest(URL(string: "nvto-connect://open?lease=\(id)&mode=shell")!))
+        XCTAssertNil(LinkRequest(URL(string: "nvto-connect://run?cmd=ls")!))
         XCTAssertNil(LinkRequest(URL(string: "https://open?lease=\(id)")!))
     }
 

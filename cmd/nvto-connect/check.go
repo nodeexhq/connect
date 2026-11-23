@@ -14,8 +14,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Checking the machine. The owner controls the node and its Miner, and the
-// Miner could claim a better machine than it is; this program is the
+// Checking the machine. The owner controls the node and its Node app, and the
+// Node app could claim a better machine than it is; this program is the
 // renter's own. When it connects it looks at the machine from the inside,
 // times a few standard jobs, and reports to the platform, which compares
 // the report with what the node claims.
@@ -56,7 +56,7 @@ const (
 	// about two seconds on a recent Apple chip.
 	checkCPU = `dd if=/dev/zero bs=1048576 count=4096 2>/dev/null | /usr/bin/openssl dgst -sha256 >/dev/null`
 	// 1 GiB written to the renter's disk and flushed, then removed.
-	checkDisk = `f=$(mktemp "${TMPDIR:-/tmp}/nodeex-check.XXXXXX") || exit 1; dd if=/dev/zero of="$f" bs=1048576 count=1024 2>/dev/null && sync; rc=$?; rm -f "$f"; exit $rc`
+	checkDisk = `f=$(mktemp "${TMPDIR:-/tmp}/nvto-check.XXXXXX") || exit 1; dd if=/dev/zero of="$f" bs=1048576 count=1024 2>/dev/null && sync; rc=$?; rm -f "$f"; exit $rc`
 	// 32 MiB from the machine to this computer, through the same tunnel
 	// SSH and remote desktop use.
 	checkTunnelBytes = 32 << 20
@@ -134,7 +134,7 @@ func checkWithTools(ctx context.Context, c *ssh.Client) (machineReport, error) {
 	if err != nil {
 		return r, err
 	}
-	r.Client = "nodeex-connect " + version
+	r.Client = "nvto-connect " + version
 	r.Method = "tools"
 	if d, err := runTimed(ctx, c, checkCPU, 60*time.Second); err == nil {
 		r.CPUSeconds = round2(d.Seconds())

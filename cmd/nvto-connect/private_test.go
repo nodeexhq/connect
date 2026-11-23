@@ -20,7 +20,7 @@ func TestValidDisk(t *testing.T) {
 func TestAPFSListParse(t *testing.T) {
 	raw := `{"Containers":[{"ContainerReference":"disk3","Volumes":[
 		{"Name":"Macintosh HD","DeviceIdentifier":"disk3s1","Locked":false},
-		{"Name":"NodeEx Private","DeviceIdentifier":"disk3s7","Locked":true,"Encryption":true}]}]}`
+		{"Name":"NVTO Private","DeviceIdentifier":"disk3s7","Locked":true,"Encryption":true}]}]}`
 	var l apfsList
 	if err := json.Unmarshal([]byte(raw), &l); err != nil {
 		t.Fatal(err)

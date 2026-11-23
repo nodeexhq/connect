@@ -32,7 +32,7 @@ func ensureSSHKey(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	block, err := ssh.MarshalPrivateKey(priv, "nodeex-connect")
+	block, err := ssh.MarshalPrivateKey(priv, "nvto-connect")
 	if err != nil {
 		return "", err
 	}
@@ -40,7 +40,7 @@ func ensureSSHKey(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))) + " nodeex-connect"
+	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))) + " nvto-connect"
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

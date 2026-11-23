@@ -7,7 +7,7 @@ import SwiftUI
 // lease on the NVTO website, or picks the lease from this menu; the app
 // signs in through the browser if it has to, runs the Go core to reach the
 // machine, and opens Screen Sharing or Terminal on it. Before an order, the
-// website's "Test the connection" opens nodeex-connect://test?reservation=…,
+// website's "Test the connection" opens nvto-connect://test?reservation=…,
 // and the app runs the core's connection test and shows what it found.
 
 /// One lease's connection: the core process and what it has reported.
@@ -65,13 +65,13 @@ final class ConnectModel: ObservableObject {
 
     private var environment: [String: String] {
         var env: [String: String] = [:]
-        if let api = ProcessInfo.processInfo.environment["NODEEX_API"] { env["NODEEX_API"] = api }
+        if let api = ProcessInfo.processInfo.environment["NVTO_API"] { env["NVTO_API"] = api }
         return env
     }
 
     lazy var cli: CoreCLI? = {
-        guard let url = Bundle.main.url(forAuxiliaryExecutable: "nodeex-connect")
-            ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/nodeex-connect") as URL?,
+        guard let url = Bundle.main.url(forAuxiliaryExecutable: "nvto-connect")
+            ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/nvto-connect") as URL?,
               FileManager.default.isExecutableFile(atPath: url.path) else { return nil }
         return CoreCLI(binary: url, environment: environment)
     }()
@@ -79,10 +79,10 @@ final class ConnectModel: ObservableObject {
     /// Where the app keeps its own files: Terminal scripts and known hosts.
     var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("NodeEx/connect-app", isDirectory: true)
+        return base.appendingPathComponent("NVTO/connect-app", isDirectory: true)
     }
 
-    var apiOrigin: String { ProcessInfo.processInfo.environment["NODEEX_API"] ?? "https://app.nvto.com" }
+    var apiOrigin: String { ProcessInfo.processInfo.environment["NVTO_API"] ?? "https://app.nvto.com" }
 
     func start() {
         updates.start(model: self)
@@ -367,7 +367,7 @@ final class ConnectModel: ObservableObject {
     }
 }
 
-/// Sparkle, as in the Miner app: an update waits while a connection is open
+/// Sparkle, as in the NVTO Node app: an update waits while a connection is open
 /// and is installed once none is.
 @MainActor
 final class Updates: NSObject, SPUUpdaterDelegate {
@@ -538,13 +538,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DispatchQueue.main.async { self?.showTest(state) }
             }
             if model.cli == nil {
-                model.alert("NVTO Connect is damaged", "The nodeex-connect program was not found inside the app. Download the app again from nvto.com/download.")
+                model.alert("NVTO Connect is damaged", "The nvto-connect program was not found inside the app. Download the app again from nvto.com/download.")
             }
             model.start()
         }
     }
 
-    /// Links from the NVTO website: nodeex-connect://open?lease=…&mode=….
+    /// Links from the NVTO website: nvto-connect://open?lease=…&mode=….
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             for url in urls {

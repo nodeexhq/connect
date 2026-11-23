@@ -11,13 +11,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/nodeexhq/connect/internal/workproof"
+	"github.com/nvtohq/connect/internal/workproof"
 	"golang.org/x/crypto/ssh"
 )
 
 // The measuring program's place in the machine, removed after the check.
 const (
-	guestDir  = `"$HOME/.nodeex-check"`
+	guestDir  = `"$HOME/.nvto-check"`
 	guestPath = guestDir + `/g`
 )
 
@@ -133,7 +133,7 @@ func checkWithGuest(ctx context.Context, c *ssh.Client) (machineReport, error) {
 	}
 	r = machineReport{Model: info.Model, CPU: info.CPU, Cores: info.Cores, MemoryBytes: info.MemoryBytes,
 		DiskBytes: info.DiskBytes, DiskFreeBytes: min(info.DiskFreeBytes, info.DiskBytes),
-		Client: "nodeex-connect " + version, Method: "guest"}
+		Client: "nvto-connect " + version, Method: "guest"}
 
 	type answers struct {
 		Answers json.RawMessage `json:"answers"` // [worker][chunk] hex SHA-256

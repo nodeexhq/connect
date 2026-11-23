@@ -10,12 +10,12 @@ import (
 )
 
 // defaultLimits are the platform's caps for one test (its
-// leasetoken.DefaultTestLimits), for the tests ported from the Miner.
+// leasetoken.DefaultTestLimits), for the tests ported from the Node app.
 func defaultLimits() Limits {
 	return Limits{Pings: 20, MaxDownBytes: 10_000_000, MaxUpBytes: 10_000_000, MaxSeconds: 10}
 }
 
-// Connect's measurement over distant, slow lines, against the Miner's own
+// Connect's measurement over distant, slow lines, against the Node app's own
 // server: it ends well inside the ticket's 10 s, with figures that match
 // the line.
 func TestMeasureShaped(t *testing.T) {
@@ -147,7 +147,7 @@ func TestMedianJitter(t *testing.T) {
 
 func TestClamp(t *testing.T) {
 	got := Limits{Pings: 99, MaxDownBytes: 1 << 40, MaxUpBytes: -1, MaxSeconds: 60}.Clamp()
-	if got != (Limits{MinerMaxPings, MinerMaxDownBytes, 0, MinerMaxSeconds}) {
+	if got != (Limits{NodeMaxPings, NodeMaxDownBytes, 0, NodeMaxSeconds}) {
 		t.Errorf("%+v", got)
 	}
 }

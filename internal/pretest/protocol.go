@@ -4,15 +4,15 @@
 //
 // The test is admitted by the gate handshake (service "test", with a test
 // token from the platform; see leasetoken.VerifyTest) and is served by the
-// Miner process itself. It never reaches the rented machine, and it is
+// Node app process itself. It never reaches the rented machine, and it is
 // refused while a lease is active on the node, so it cannot disturb a
 // renter.
 //
-// This package is Connect's copy of the Miner's (github.com/nodeexhq/miner,
+// This package is Connect's copy of the Node app's (github.com/nvtohq/node,
 // package pretest, at f160fb6): protocol.go, client.go and server.go and
 // their tests are ported unchanged but for the limits type, so that the two
 // sides cannot drift apart. Change them there first. Serve is here only to
-// test the client against the Miner's own server. Connect's own rules on
+// test the client against the Node app's own server. Connect's own rules on
 // top (how many pings a result needs, what counts as too slow, the figures
 // it reports) are in connect.go.
 //
@@ -40,7 +40,7 @@
 //
 // # Phases
 //
-// The phases run once each, in this order. The Miner closes the connection
+// The phases run once each, in this order. The Node app closes the connection
 // the test's max_seconds (clamped) after it sent OK, sending ERR 3 if it can.
 //
 // P, ping. The client sends PING and waits for its PONG, one at a time, at

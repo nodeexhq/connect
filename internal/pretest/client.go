@@ -11,7 +11,7 @@ import (
 )
 
 // Options say how much of a test the client runs. Each must be within the
-// test token's limits, or the Miner refuses the test part-way.
+// test token's limits, or the Node app refuses the test part-way.
 type Options struct {
 	Pings     int // at most; the client stops after PingWindow, having sent at least one
 	DownBytes int64
@@ -77,7 +77,7 @@ func mbps(n int64, d time.Duration) float64 {
 
 // Run performs the client's side of a test on conn, on which gate.Dial
 // with service "test" has just succeeded. It returns what it measured; a
-// refusal by the Miner is an *Error. ctx bounds the whole test (the Miner
+// refusal by the Node app is an *Error. ctx bounds the whole test (the Node app
 // closes it after the token's max_seconds in any case). Run does not close
 // conn, but conn is of no further use after it.
 func Run(ctx context.Context, conn net.Conn, opt Options) (Result, error) {
@@ -282,7 +282,7 @@ stream:
 	return err
 }
 
-// refusal explains a failed upload write: the Miner may have sent an ERR
+// refusal explains a failed upload write: the Node app may have sent an ERR
 // and closed before the client stopped sending.
 func (c *client) refusal(werr error) error {
 	timeout := time.After(time.Second)

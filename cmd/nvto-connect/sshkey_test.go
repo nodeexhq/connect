@@ -18,7 +18,7 @@ func TestEnsureSSHKey(t *testing.T) {
 		t.Fatalf("second call gave %q, %v; want the same key", again, err)
 	}
 	parsed, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(pub))
-	if err != nil || comment != "nodeex-connect" || parsed.Type() != "ssh-ed25519" {
+	if err != nil || comment != "nvto-connect" || parsed.Type() != "ssh-ed25519" {
 		t.Fatalf("public key %q: %v", pub, err)
 	}
 	priv, err := os.ReadFile(sshKeyPath(dir))

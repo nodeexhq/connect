@@ -1,12 +1,12 @@
-// nodeex-connect is the renter-side client. It signs in, lists leases,
+// nvto-connect is the renter-side client. It signs in, lists leases,
 // opens a leased machine's SSH and remote desktop on local ports, and tests
 // the connection to a reserved machine before it is ordered.
 //
-//	nodeex-connect login [-no-browser]       (approve in the browser)
-//	nodeex-connect login -email EMAIL        (password, for machines without a browser)
-//	nodeex-connect leases
-//	nodeex-connect open LEASE_ID [-ssh-port 10022] [-vnc-port 15900] [-open-vnc]
-//	nodeex-connect test RESERVATION_ID [-events]
+//	nvto-connect login [-no-browser]       (approve in the browser)
+//	nvto-connect login -email EMAIL        (password, for machines without a browser)
+//	nvto-connect leases
+//	nvto-connect open LEASE_ID [-ssh-port 10022] [-vnc-port 15900] [-open-vnc]
+//	nvto-connect test RESERVATION_ID [-events]
 package main
 
 import (
@@ -29,10 +29,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nodeexhq/miner/gate"
-	"github.com/nodeexhq/miner/leasetoken"
-	"github.com/nodeexhq/miner/overlay"
-	"github.com/nodeexhq/miner/tunnel"
+	"github.com/nvtohq/node/gate"
+	"github.com/nvtohq/node/leasetoken"
+	"github.com/nvtohq/node/overlay"
+	"github.com/nvtohq/node/tunnel"
 	"golang.org/x/term"
 )
 
@@ -60,9 +60,9 @@ func envOr(name, fallback string) string {
 // permissions; the Unix mode bits set below have no effect there.
 func defaultDir() string {
 	if d, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(d, "NodeEx", "connect")
+		return filepath.Join(d, "NVTO", "connect")
 	}
-	return "nodeex-connect"
+	return "nvto-connect"
 }
 
 func sessionPath(dir string) string { return filepath.Join(dir, "session.json") }
@@ -71,7 +71,7 @@ func loadSession(dir string) (session, error) {
 	var s session
 	b, err := os.ReadFile(sessionPath(dir))
 	if errors.Is(err, os.ErrNotExist) {
-		return s, errors.New("not signed in; run `nodeex-connect login` first")
+		return s, errors.New("not signed in; run `nvto-connect login` first")
 	}
 	if err != nil {
 		return s, err
@@ -146,7 +146,7 @@ func main() {
 	case "test":
 		err = cmdTest(os.Args[2:])
 	case "version", "-v", "--version":
-		fmt.Printf("nodeex-connect %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("nvto-connect %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
 	default:
 		usage()
 	}
@@ -159,13 +159,13 @@ func main() {
 		emit("error", map[string]any{"message": err.Error()})
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nodeex-connect:", err)
+		fmt.Fprintln(os.Stderr, "nvto-connect:", err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: nodeex-connect <login|logout|status|leases|open|test|version> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: nvto-connect <login|logout|status|leases|open|test|version> [flags]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "  login [-no-browser] [-email EMAIL]   sign in")
 	fmt.Fprintln(os.Stderr, "  logout                               sign out")
@@ -180,14 +180,14 @@ func usage() {
 
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
-	api := fs.String("api", envOr("NODEEX_API", defaultAPI), "platform API URL (or $NODEEX_API)")
+	api := fs.String("api", envOr("NVTO_API", defaultAPI), "platform API URL (or $NVTO_API)")
 	email := fs.String("email", "", "sign in with email and password instead of the browser")
 	noBrowser := fs.Bool("no-browser", false, "print the sign-in address instead of opening a browser")
 	dir := fs.String("dir", defaultDir(), "state directory")
 	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
 	fs.Parse(args)
 	if *api == "" {
-		return errors.New("usage: nodeex-connect login [-no-browser] [-email YOU@EXAMPLE.COM]")
+		return errors.New("usage: nvto-connect login [-no-browser] [-email YOU@EXAMPLE.COM]")
 	}
 	var token string
 	if *email == "" {
@@ -213,10 +213,10 @@ func cmdLogin(args []string) error {
 }
 
 // passwordLogin is for a computer with no browser at hand. The password
-// comes from the terminal or $NODEEX_PASSWORD, never a flag, so it stays
+// comes from the terminal or $NVTO_PASSWORD, never a flag, so it stays
 // out of shell history and process listings.
 func passwordLogin(api, email string) (string, error) {
-	password := os.Getenv("NODEEX_PASSWORD")
+	password := os.Getenv("NVTO_PASSWORD")
 	if password == "" {
 		fmt.Fprint(os.Stderr, "password: ")
 		b, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -339,7 +339,7 @@ func cmdOpen(args []string) error {
 		leaseID = fs.Arg(0)
 	}
 	if leaseID == "" {
-		return errors.New("usage: nodeex-connect open LEASE_ID")
+		return errors.New("usage: nvto-connect open LEASE_ID")
 	}
 	s, err := loadSession(*dir)
 	if err != nil {
@@ -383,7 +383,7 @@ func cmdOpen(args []string) error {
 
 	// Each run joins as a fresh ephemeral client, so the overlay state is
 	// throwaway.
-	stateDir, err := os.MkdirTemp("", "nodeex-connect-")
+	stateDir, err := os.MkdirTemp("", "nvto-connect-")
 	if err != nil {
 		return err
 	}

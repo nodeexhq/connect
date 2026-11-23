@@ -213,7 +213,7 @@ func TestMalformedFrames(t *testing.T) {
 	}
 }
 
-// The Miner closes the test MaxSeconds after OK, whatever the client does.
+// The Node app closes the test MaxSeconds after OK, whatever the client does.
 func TestDeadline(t *testing.T) {
 	client, server := pair(t)
 	start := time.Now()

@@ -1,15 +1,15 @@
 //go:build darwin
 
-// nodeex-guest is the small program NVTO Connect copies into a rented
+// nvto-guest is the small program NVTO Connect copies into a rented
 // machine to check it. It runs only Go and the system calls below, not the
 // machine's own command-line tools, so replacing those tools changes
 // nothing. Every timed job it does is checked by Connect against answers it
 // can work out on its own (package workproof).
 //
-//	nodeex-guest info
-//	nodeex-guest cpu KEY WORKERS CHUNKS CHUNK_BYTES
-//	nodeex-guest mem KEY CHUNKS CHUNK_BYTES
-//	nodeex-guest disk KEY CHUNKS CHUNK_BYTES
+//	nvto-guest info
+//	nvto-guest cpu KEY WORKERS CHUNKS CHUNK_BYTES
+//	nvto-guest mem KEY CHUNKS CHUNK_BYTES
+//	nvto-guest disk KEY CHUNKS CHUNK_BYTES
 //
 // Each writes one JSON object on standard output.
 package main
@@ -25,13 +25,13 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/nodeexhq/connect/internal/workproof"
+	"github.com/nvtohq/connect/internal/workproof"
 	"golang.org/x/sys/unix"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fail("usage: nodeex-guest info|cpu|mem|disk ...")
+		fail("usage: nvto-guest info|cpu|mem|disk ...")
 	}
 	var out any
 	switch os.Args[1] {
@@ -53,7 +53,7 @@ func main() {
 }
 
 func fail(msg string) {
-	fmt.Fprintln(os.Stderr, "nodeex-guest:", msg)
+	fmt.Fprintln(os.Stderr, "nvto-guest:", msg)
 	os.Exit(2)
 }
 
@@ -163,7 +163,7 @@ func disk(key []byte, chunks, size int) map[string]any {
 	if home, err := os.UserHomeDir(); err == nil {
 		dir = home
 	}
-	f, err := os.CreateTemp(dir, ".nodeex-check-*")
+	f, err := os.CreateTemp(dir, ".nvto-check-*")
 	if err != nil {
 		fail(err.Error())
 	}

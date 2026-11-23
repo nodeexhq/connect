@@ -15,9 +15,9 @@ func TestSSHHostEntry(t *testing.T) {
 	existing := "Host work\n  HostName example.com\n"
 	os.WriteFile(filepath.Join(sshDir, "config"), []byte(existing), 0o644)
 
-	state := filepath.Join(home, "Library", "Application Support", "NodeEx")
+	state := filepath.Join(home, "Library", "Application Support", "NVTO")
 	host, err := writeSSHHost(state, "3f9a1c2e-1111-2222-3333-444455556666", 10022)
-	if err != nil || host != "nodeex-3f9a1c2e" {
+	if err != nil || host != "nvto-3f9a1c2e" {
 		t.Fatalf("host %q, %v", host, err)
 	}
 	conf, _ := os.ReadFile(filepath.Join(sshDir, "config"))
@@ -27,8 +27,8 @@ func TestSSHHostEntry(t *testing.T) {
 	if st, _ := os.Stat(filepath.Join(sshDir, "config")); st.Mode().Perm() != 0o644 {
 		t.Errorf("config mode changed to %v", st.Mode().Perm())
 	}
-	entry, _ := os.ReadFile(filepath.Join(sshDir, "nodeex", "3f9a1c2e.conf"))
-	for _, want := range []string{"Host nodeex-3f9a1c2e", "Port 10022", "User renter", `IdentityFile "` + state + `/id_ed25519"`, "IdentitiesOnly yes"} {
+	entry, _ := os.ReadFile(filepath.Join(sshDir, "nvto", "3f9a1c2e.conf"))
+	for _, want := range []string{"Host nvto-3f9a1c2e", "Port 10022", "User renter", `IdentityFile "` + state + `/id_ed25519"`, "IdentitiesOnly yes"} {
 		if !strings.Contains(string(entry), want) {
 			t.Errorf("entry lacks %q:\n%s", want, entry)
 		}
@@ -40,11 +40,11 @@ func TestSSHHostEntry(t *testing.T) {
 		t.Errorf("Include added twice:\n%s", conf)
 	}
 	removeSSHHost("3f9a1c2e-1111-2222-3333-444455556666")
-	if _, err := os.Stat(filepath.Join(sshDir, "nodeex", "3f9a1c2e.conf")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(sshDir, "nvto", "3f9a1c2e.conf")); !os.IsNotExist(err) {
 		t.Error("entry left behind after disconnect")
 	}
 	// The host key of a lease that has ended is forgotten.
-	known := filepath.Join(sshDir, "nodeex", "known_hosts-3f9a1c2e")
+	known := filepath.Join(sshDir, "nvto", "known_hosts-3f9a1c2e")
 	os.WriteFile(known, []byte("x"), 0o600)
 	forgetSSHHost("3f9a1c2e-1111-2222-3333-444455556666")
 	if _, err := os.Stat(known); !os.IsNotExist(err) {

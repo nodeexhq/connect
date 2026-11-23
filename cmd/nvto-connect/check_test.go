@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,11 +137,11 @@ func TestCheckMachineOverSSH(t *testing.T) {
 
 func buildGuest(t *testing.T) []byte {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "nodeex-guest")
-	cmd := exec.Command("go", "build", "-o", out, "../nodeex-guest")
+	out := filepath.Join(t.TempDir(), "nvto-guest")
+	cmd := exec.Command("go", "build", "-o", out, "../nvto-guest")
 	cmd.Env = append(os.Environ(), "GOOS=darwin", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building nodeex-guest: %v\n%s", err, b)
+		t.Fatalf("building nvto-guest: %v\n%s", err, b)
 	}
 	b, err := os.ReadFile(out)
 	if err != nil {

@@ -1,6 +1,6 @@
-/nodeex-connect
-/nodeex-connect.exe
+/nvto-connect
+/nvto-connect.exe
 /dist/
 .DS_Store
-cmd/nodeex-connect/guestbin/
-cmd/nodeex-connect/nodeex-connect
+cmd/nvto-connect/guestbin/
+cmd/nvto-connect/nvto-connect

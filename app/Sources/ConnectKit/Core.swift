@@ -11,7 +11,7 @@ public struct CoreEvent: Decodable, Equatable {
     public var account: String?
     public var password: String?
     public var sshKey: String?
-    /// The machine's name in ~/.ssh/config while connected (nodeex-<lease>).
+    /// The machine's name in ~/.ssh/config while connected (nvto-<lease>).
     public var sshHost: String?
     public var note: String?
     /// Where the encrypted private folder is (~/Private), or why it is not.
@@ -51,7 +51,7 @@ public struct CoreEvent: Decodable, Equatable {
     }
 }
 
-/// A lease as `nodeex-connect leases -json` prints it.
+/// A lease as `nvto-connect leases -json` prints it.
 public struct Lease: Decodable, Equatable, Identifiable {
     public var id: String
     public var term: String
@@ -102,7 +102,7 @@ public struct CoreCLI {
         p.waitUntilExit()
         guard p.terminationStatus == 0 else {
             let msg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw CoreError.failed(msg.replacingOccurrences(of: "nodeex-connect: ", with: ""))
+            throw CoreError.failed(msg.replacingOccurrences(of: "nvto-connect: ", with: ""))
         }
         return data
     }

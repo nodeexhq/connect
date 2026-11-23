@@ -81,7 +81,7 @@ func link(t *testing.T, rtt time.Duration, downBps, upBps float64) (client, serv
 }
 
 // Over lines from fast and near to slow and far, the whole test ends
-// inside the Miner's 10 s, with figures that match the line.
+// inside the Node app's 10 s, with figures that match the line.
 func TestShapedLinks(t *testing.T) {
 	for _, c := range []struct {
 		name     string

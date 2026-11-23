@@ -22,5 +22,5 @@ jobs:
       # Connect must keep building for every system renters use.
       - run: |
           for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
-            GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./cmd/nodeex-connect
+            GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./cmd/nvto-connect
           done

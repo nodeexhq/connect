@@ -19,17 +19,17 @@ ask before running a downloaded binary, and building from source avoids that.
 Go 1.27 or later.
 
 ```sh
-git clone https://github.com/nodeexhq/connect.git
+git clone https://github.com/nvtohq/connect.git
 cd connect
-go build -o nodeex-connect ./cmd/nodeex-connect
+go build -o nvto-connect ./cmd/nvto-connect
 ```
 
 ## Use
 
 ```sh
-nodeex-connect login
-nodeex-connect leases
-nodeex-connect open LEASE_ID
+nvto-connect login
+nvto-connect leases
+nvto-connect open LEASE_ID
 ```
 
 While `open` runs, the machine is reachable at:
@@ -38,9 +38,9 @@ While `open` runs, the machine is reachable at:
 - Remote desktop: `vnc://127.0.0.1:15900` (macOS Screen Sharing; on Windows and Linux, a VNC viewer you install)
 
 Before you order, the website can reserve a machine and have Connect test the connection to it:
-`nodeex-connect test RESERVATION_ID` reaches the reserved machine the way a lease would, measures latency, jitter,
+`nvto-connect test RESERVATION_ID` reaches the reserved machine the way a lease would, measures latency, jitter,
 download and upload for at most ten seconds, and prints the platform's rating (smooth, ok or may lag). The Mac app
-runs it when the website opens `nodeex-connect://test?reservation=RESERVATION_ID`. A test is free and moves at most
+runs it when the website opens `nvto-connect://test?reservation=RESERVATION_ID`. A test is free and moves at most
 what its ticket allows (10 MB each way).
 
 Every command and flag is described in the [Connect reference](https://nvto.com/docs/reference/connect-cli).
@@ -56,7 +56,7 @@ connection, tokens last 10 minutes, and access ends when the lease does.
 code and approve it. Connect never sees your password, so a counterfeit copy has none to take. Approve only a code
 you have just started yourself. Add `-no-browser` to print the address instead of opening it (to approve on another
 device). On a computer with no browser, `login -email you@example.com` asks for the password in the terminal (or
-reads `$NODEEX_PASSWORD`) and never stores it. Either way `login` keeps a session token in your user configuration
+reads `$NVTO_PASSWORD`) and never stores it. Either way `login` keeps a session token in your user configuration
 directory.
 
 Official builds are published only on this repository's releases page and on https://nvto.com/download. The
@@ -64,7 +64,7 @@ macOS builds are signed with NVTO's Developer ID (team ID `7GS265YM4T`) and nota
 `SHA256SUMS` file. See [how to check a download](https://nvto.com/security#software).
 
 The gate, lease token, overlay and tunnel code is shared with the node side and lives in
-[nodeexhq/miner](https://github.com/nodeexhq/miner).
+[nvtohq/node](https://github.com/nvtohq/node).
 
 ## Security
 

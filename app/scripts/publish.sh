@@ -5,7 +5,7 @@
 #
 #   app/scripts/publish.sh v0.2.0        (after app/scripts/package.sh at that tag)
 #
-# The feed is app/appcast.xml on the main branch: this script rewrites it
+# The feed is app/feed.xml on the main branch: this script rewrites it
 # and leaves the commit and push to you, so nothing goes out unreviewed.
 set -eu
 TAG=$1
@@ -19,10 +19,10 @@ BUILD=$(git -C "$REPO" rev-list --count "$TAG")
 if [ -n "${SPARKLE_KEY_FILE:-}" ]; then
   SIGNATURE=$("$APP_DIR/.build/artifacts/sparkle/Sparkle/bin/sign_update" --ed-key-file "$SPARKLE_KEY_FILE" "$DMG")
 else
-  SIGNATURE=$("$APP_DIR/.build/artifacts/sparkle/Sparkle/bin/sign_update" --account nodeex-miner "$DMG")
+  SIGNATURE=$("$APP_DIR/.build/artifacts/sparkle/Sparkle/bin/sign_update" --account nvto-node "$DMG")
 fi
-gh release upload "$TAG" -R nodeexhq/connect "$DMG" "$DMG.sha256" --clobber
-cat > "$APP_DIR/appcast.xml" <<FEED
+gh release upload "$TAG" -R nvtohq/connect "$DMG" "$DMG.sha256" --clobber
+cat > "$APP_DIR/feed.xml" <<FEED
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The update feed of NVTO Connect for macOS. Installed apps read this file
      from the main branch; scripts/publish.sh rewrites it for each release.
@@ -37,9 +37,9 @@ cat > "$APP_DIR/appcast.xml" <<FEED
       <sparkle:version>$BUILD</sparkle:version>
       <sparkle:shortVersionString>${TAG#v}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/nodeexhq/connect/releases/download/$TAG/$(basename "$DMG")" type="application/octet-stream" $SIGNATURE />
+      <enclosure url="https://github.com/nvtohq/connect/releases/download/$TAG/$(basename "$DMG")" type="application/octet-stream" $SIGNATURE />
     </item>
   </channel>
 </rss>
 FEED
-echo "uploaded $(basename "$DMG") and wrote app/appcast.xml; commit and push it to release the update"
+echo "uploaded $(basename "$DMG") and wrote app/feed.xml; commit and push it to release the update"

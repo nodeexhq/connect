@@ -166,7 +166,7 @@ var errNoMachine = errors.New("the machine did not accept this computer's key")
 // volume is locked and its contents are unreadable, the owner's included.
 // While the machine runs, the volume stays unlocked; an owner set on it
 // could reach it then, which the security page says plainly.
-const privateVolume = "NodeEx Private"
+const privateVolume = "NVTO Private"
 
 // privateLink is where the renter finds the volume in their home folder.
 const privateLink = "Private"

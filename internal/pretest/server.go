@@ -33,8 +33,8 @@ func (r Report) Moved() int64 { return r.BytesIn + r.BytesOut }
 // lingerDrain is how long a refused client's remaining bytes are taken.
 const lingerDrain = 500 * time.Millisecond
 
-// Serve runs the Miner's side of a test on conn, which has just been sent
-// the gate's OK at started, within lim (clamped to the Miner's maxima). It
+// Serve runs the Node app's side of a test on conn, which has just been sent
+// the gate's OK at started, within lim (clamped to the Node app's maxima). It
 // always closes conn. The error says why a test that did not end in BYE
 // stopped.
 func Serve(conn net.Conn, lim Limits, started time.Time) (Report, error) {

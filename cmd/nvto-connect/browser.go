@@ -43,7 +43,7 @@ func browserLogin(ctx context.Context, api string, noBrowser bool) (string, erro
 		Interval        int    `json:"interval"`
 	}
 	if err := call(ctx, session{API: api}, "POST", "/v1/auth/device",
-		map[string]string{"client": "nodeex-connect " + version}, &start); err != nil {
+		map[string]string{"client": "nvto-connect " + version}, &start); err != nil {
 		return "", err
 	}
 	emit("code", map[string]any{"user_code": start.UserCode, "verification_url": start.VerificationURL, "expires_in": start.ExpiresIn})
@@ -78,7 +78,7 @@ func browserLogin(ctx context.Context, api string, noBrowser bool) (string, erro
 		case errors.As(err, &ae) && ae.Code == "access_denied":
 			return "", errors.New("the sign-in was denied on the website")
 		case errors.As(err, &ae) && ae.Code == "expired_token":
-			return "", errors.New("the code expired; run `nodeex-connect login` again")
+			return "", errors.New("the code expired; run `nvto-connect login` again")
 		case errors.As(err, &ae):
 			return "", err
 		default:
@@ -86,5 +86,5 @@ func browserLogin(ctx context.Context, api string, noBrowser bool) (string, erro
 			continue
 		}
 	}
-	return "", errors.New("the code expired; run `nodeex-connect login` again")
+	return "", errors.New("the code expired; run `nvto-connect login` again")
 }

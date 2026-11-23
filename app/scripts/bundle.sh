@@ -12,7 +12,7 @@ IDENTITY=${SIGN_IDENTITY:--}
 # Sparkle compares build numbers, so the build is a plain count of commits.
 BUILD=${BUILD:-$(git -C "$REPO" rev-list --count HEAD 2>/dev/null || echo 1)}
 # Where the app looks for updates. Empty builds an app that never updates.
-FEED_URL=${FEED_URL-https://raw.githubusercontent.com/nodeexhq/connect/main/app/appcast.xml}
+FEED_URL=${FEED_URL-https://raw.githubusercontent.com/nvtohq/connect/main/app/feed.xml}
 DIST="$APP_DIR/dist"
 BUNDLE="$DIST/NVTO Connect.app"
 
@@ -24,14 +24,14 @@ mkdir -p "$DIST"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Helpers" "$BUNDLE/Contents/Resources" "$BUNDLE/Contents/Frameworks"
 cp "$APP_DIR/Resources/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R "$APP_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$BUNDLE/Contents/Frameworks/"
-cp "$BIN/NodeExConnect" "$BUNDLE/Contents/MacOS/NodeExConnect"
+cp "$BIN/NVTOConnect" "$BUNDLE/Contents/MacOS/NVTOConnect"
 TMP=$(mktemp -d)
 "$REPO/scripts/build-guest.sh"
 for arch in arm64 amd64; do
   (cd "$REPO" && CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -tags guestbin -trimpath -ldflags "-s -w -X main.version=$VERSION" \
-    -o "$TMP/nodeex-connect-$arch" ./cmd/nodeex-connect)
+    -o "$TMP/nvto-connect-$arch" ./cmd/nvto-connect)
 done
-lipo -create -output "$BUNDLE/Contents/Helpers/nodeex-connect" "$TMP/nodeex-connect-arm64" "$TMP/nodeex-connect-amd64"
+lipo -create -output "$BUNDLE/Contents/Helpers/nvto-connect" "$TMP/nvto-connect-arm64" "$TMP/nvto-connect-amd64"
 rm -rf "$TMP"
 
 UPDATE_KEYS=""
@@ -50,8 +50,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 <dict>
 	<key>CFBundleName</key><string>NVTO Connect</string>
 	<key>CFBundleDisplayName</key><string>NVTO Connect</string>
-	<key>CFBundleIdentifier</key><string>com.nodeex.connect</string>
-	<key>CFBundleExecutable</key><string>NodeExConnect</string>
+	<key>CFBundleIdentifier</key><string>com.nvto.connect</string>
+	<key>CFBundleExecutable</key><string>NVTOConnect</string>
 	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>${VERSION#v}</string>
@@ -59,8 +59,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleURLName</key><string>com.nodeex.connect</string>
-			<key>CFBundleURLSchemes</key><array><string>nodeex-connect</string></array>
+			<key>CFBundleURLName</key><string>com.nvto.connect</string>
+			<key>CFBundleURLSchemes</key><array><string>nvto-connect</string></array>
 		</dict>
 	</array>
 ${UPDATE_KEYS}
@@ -80,7 +80,7 @@ sign --preserve-metadata=entitlements "$SPARKLE/Versions/B/XPCServices/Downloade
 sign "$SPARKLE/Versions/B/Autoupdate"
 sign "$SPARKLE/Versions/B/Updater.app"
 sign "$SPARKLE"
-sign "$BUNDLE/Contents/Helpers/nodeex-connect"
+sign "$BUNDLE/Contents/Helpers/nvto-connect"
 sign "$BUNDLE"
 codesign --verify --strict "$BUNDLE"
 echo "built $BUNDLE ($VERSION, build $BUILD)"

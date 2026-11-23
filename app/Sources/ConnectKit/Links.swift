@@ -1,8 +1,8 @@
 import Foundation
 
-/// What a nodeex-connect:// link asks for. The NVTO console links to
-/// nodeex-connect://open?lease=<id>&mode=desktop (or ssh), and the order page
-/// to nodeex-connect://test?reservation=<id> for the connection test before
+/// What a nvto-connect:// link asks for. The NVTO console links to
+/// nvto-connect://open?lease=<id>&mode=desktop (or ssh), and the order page
+/// to nvto-connect://test?reservation=<id> for the connection test before
 /// an order; any web page could open such a link, so it can only ever reach
 /// the signed-in user's own leases and reservations, and only the things
 /// below.
@@ -12,7 +12,7 @@ public enum LinkRequest: Equatable {
     case signIn
 
     public init?(_ url: URL) {
-        guard url.scheme?.lowercased() == "nodeex-connect",
+        guard url.scheme?.lowercased() == "nvto-connect",
               let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let action = (parts.host ?? "").lowercased()
         let query = Dictionary((parts.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })

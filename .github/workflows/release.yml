@@ -54,16 +54,16 @@ jobs:
             os=${t%/*}; arch=${t#*/}
             name=$os; [ "$os" = darwin ] && name=macos
             cpu=$arch; [ "$arch" = amd64 ] && cpu=x64
-            exe=nodeex-connect; [ "$os" = windows ] && exe=nodeex-connect.exe
-            dir=dist/nodeex-connect
+            exe=nvto-connect; [ "$os" = windows ] && exe=nvto-connect.exe
+            dir=dist/nvto-connect
             rm -rf "$dir" && mkdir "$dir"
-            GOOS=$os GOARCH=$arch go build -tags guestbin -trimpath -ldflags "-s -w -X main.version=$TAG" -o "$dir/$exe" ./cmd/nodeex-connect
+            GOOS=$os GOARCH=$arch go build -tags guestbin -trimpath -ldflags "-s -w -X main.version=$TAG" -o "$dir/$exe" ./cmd/nvto-connect
             [ "$os" != darwin ] || scripts/sign-binary.sh "$dir/$exe"
             cp LICENSE README.md "$dir/"
-            base="nodeex-connect_${TAG}_${name}_${cpu}"
-            if [ "$os" = windows ]; then (cd dist && zip -qr "$base.zip" nodeex-connect); else tar -C dist -czf "dist/$base.tar.gz" nodeex-connect; fi
+            base="nvto-connect_${TAG}_${name}_${cpu}"
+            if [ "$os" = windows ]; then (cd dist && zip -qr "$base.zip" nvto-connect); else tar -C dist -czf "dist/$base.tar.gz" nvto-connect; fi
           done
-          rm -rf dist/nodeex-connect
+          rm -rf dist/nvto-connect
           (cd dist && shasum -a 256 * > SHA256SUMS)
 
       - name: The app
@@ -89,12 +89,12 @@ jobs:
           SPARKLE_KEY_FILE="$RUNNER_TEMP/sparkle.key" app/scripts/publish.sh "$TAG"
           rm -f "$RUNNER_TEMP/sparkle.key"
           # Installed apps read the feed from the main branch.
-          cp app/appcast.xml "$RUNNER_TEMP/appcast.xml"
+          cp app/feed.xml "$RUNNER_TEMP/feed.xml"
           git fetch -q origin main
           git checkout -q -f -B main origin/main
-          cp "$RUNNER_TEMP/appcast.xml" app/appcast.xml
+          cp "$RUNNER_TEMP/feed.xml" app/feed.xml
           git config user.name "NVTO"
           git config user.email "hello@nvto.com"
-          git add app/appcast.xml
+          git add app/feed.xml
           git commit -q -m "Update feed: $TAG"
           git push -q origin main

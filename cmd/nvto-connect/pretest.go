@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nodeexhq/connect/internal/pretest"
-	"github.com/nodeexhq/miner/gate"
-	"github.com/nodeexhq/miner/overlay"
+	"github.com/nvtohq/connect/internal/pretest"
+	"github.com/nvtohq/node/gate"
+	"github.com/nvtohq/node/overlay"
 )
 
 // The connection test before an order. The website reserves a machine of the
@@ -96,7 +96,7 @@ func cmdTest(args []string) error {
 		id = fs.Arg(0)
 	}
 	if id == "" {
-		return errors.New("usage: nodeex-connect test RESERVATION_ID [-events]")
+		return errors.New("usage: nvto-connect test RESERVATION_ID [-events]")
 	}
 	s, err := loadSession(*dir)
 	if err != nil {
@@ -146,7 +146,7 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 	}
 
 	// A fresh, ephemeral identity on the overlay for this test alone.
-	stateDir, err := os.MkdirTemp("", "nodeex-test-")
+	stateDir, err := os.MkdirTemp("", "nvto-test-")
 	if err != nil {
 		return testResult{}, err
 	}

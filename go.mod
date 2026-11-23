@@ -1,9 +1,9 @@
-module github.com/nodeexhq/connect
+module github.com/nvtohq/connect
 
 go 1.27.4
 
 require (
-	github.com/nodeexhq/miner v0.1.0
+	github.com/nvtohq/node v0.0.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
@@ -52,3 +52,6 @@ require (
 	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72 // indirect
 	tailscale.com v1.104.7 // indirect
 )
+
+// TEMP until github.com/nvtohq/node is published; see deploy/README.md section 六
+replace github.com/nvtohq/node => ../miner
