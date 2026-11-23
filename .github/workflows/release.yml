@@ -1,7 +1,7 @@
 name: release
 
 # Pushing a tag such as v0.2.0 builds Connect for every system, signs and
-# notarizes the macOS builds and the NodeEx Connect app, publishes them as a
+# notarizes the macOS builds and the NVTO Connect app, publishes them as a
 # release, and points the app's update feed at the new version.
 #
 # The signing material is in the organization's secrets:
@@ -71,8 +71,8 @@ jobs:
 
       - name: Publish
         run: |
-          gh release create "$TAG" dist/* --prerelease --title "NodeEx Connect $TAG" \
-            --notes "NodeEx Connect for macOS (the app, for Apple silicon and Intel) and the command-line client for macOS, Windows and Linux. The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against the checksums."
+          gh release create "$TAG" dist/* --prerelease --title "NVTO Connect $TAG" \
+            --notes "NVTO Connect for macOS (the app, for Apple silicon and Intel) and the command-line client for macOS, Windows and Linux. The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against the checksums."
 
       - name: The app, for a test build
         if: ${{ contains(github.ref_name, '-') }}
@@ -93,8 +93,8 @@ jobs:
           git fetch -q origin main
           git checkout -q -f -B main origin/main
           cp "$RUNNER_TEMP/appcast.xml" app/appcast.xml
-          git config user.name "NodeEx"
-          git config user.email "hello@nodeex.com"
+          git config user.name "NVTO"
+          git config user.email "hello@nvto.com"
           git add app/appcast.xml
           git commit -q -m "Update feed: $TAG"
           git push -q origin main

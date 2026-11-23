@@ -31,7 +31,7 @@ func openBrowser(raw string) error {
 }
 
 // browserLogin signs in the way GitHub's and the cloud providers' command-line
-// tools do: this program shows a short code and opens the NodeEx site; the
+// tools do: this program shows a short code and opens the NVTO site; the
 // user, signed in there, checks the code and approves. No password is ever
 // typed into this program, so a counterfeit copy has none to take.
 func browserLogin(ctx context.Context, api string, noBrowser bool) (string, error) {
@@ -48,7 +48,7 @@ func browserLogin(ctx context.Context, api string, noBrowser bool) (string, erro
 	}
 	emit("code", map[string]any{"user_code": start.UserCode, "verification_url": start.VerificationURL, "expires_in": start.ExpiresIn})
 	fmt.Fprintf(os.Stderr, "\nTo sign in, open this page and approve the code:\n\n    %s\n\n    code: %s\n\n", start.VerificationURL, start.UserCode)
-	fmt.Fprintln(os.Stderr, "Approve only if the page is on nodeex.com and shows this same code.")
+	fmt.Fprintln(os.Stderr, "Approve only if the page is on nvto.com and shows this same code.")
 	if !noBrowser {
 		if err := openBrowser(start.VerificationURL); err != nil {
 			fmt.Fprintln(os.Stderr, "(could not open a browser; open the address yourself)")

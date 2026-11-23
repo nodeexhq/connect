@@ -21,7 +21,7 @@ func TestSSHHostEntry(t *testing.T) {
 		t.Fatalf("host %q, %v", host, err)
 	}
 	conf, _ := os.ReadFile(filepath.Join(sshDir, "config"))
-	if !strings.HasPrefix(string(conf), "# Added by NodeEx Connect") || !strings.Contains(string(conf), sshInclude+"\n") || !strings.HasSuffix(string(conf), existing) {
+	if !strings.HasPrefix(string(conf), "# Added by NVTO Connect") || !strings.Contains(string(conf), sshInclude+"\n") || !strings.HasSuffix(string(conf), existing) {
 		t.Errorf("config:\n%s", conf)
 	}
 	if st, _ := os.Stat(filepath.Join(sshDir, "config")); st.Mode().Perm() != 0o644 {

@@ -42,7 +42,7 @@ type session struct {
 }
 
 // defaultAPI is the platform's own address, so renters need not type it.
-const defaultAPI = "https://app.nodeex.com"
+const defaultAPI = "https://app.nvto.com"
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"

@@ -53,7 +53,7 @@ func writeSSHHost(stateDir, leaseID string, port int) (string, error) {
 	}
 	host := sshHost(leaseID)
 	known := filepath.Join(dir, "known_hosts-"+strings.TrimPrefix(host, "nodeex-"))
-	entry := fmt.Sprintf(`# Written by NodeEx Connect for lease %s while it is connected;
+	entry := fmt.Sprintf(`# Written by NVTO Connect for lease %s while it is connected;
 # removed when Connect disconnects.
 Host %s
   HostName 127.0.0.1
@@ -93,7 +93,7 @@ func ensureSSHInclude(sshDir string) error {
 	if st, err := os.Stat(path); err == nil {
 		mode = st.Mode().Perm()
 	}
-	text := "# Added by NodeEx Connect: names for rented machines while connected.\n" + sshInclude + "\n\n" + string(old)
+	text := "# Added by NVTO Connect: names for rented machines while connected.\n" + sshInclude + "\n\n" + string(old)
 	return os.WriteFile(path, []byte(text), mode)
 }
 

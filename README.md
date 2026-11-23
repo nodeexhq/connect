@@ -1,10 +1,10 @@
-# NodeEx Connect
+# NVTO Connect
 
-The renter's client for [NodeEx](https://nodeex.com), a network of dedicated Apple-silicon Macs that are rented whole,
+The renter's client for [NVTO](https://nvto.com), a network of dedicated Apple-silicon Macs that are rented whole,
 one renter at a time. Connect signs in to your account, lists your leases, and brings a leased Mac's SSH and remote
 desktop to ports on your own computer.
 
-NodeEx is a remote work machine. It is not a VPN or a proxy, and Connect forwards nothing except SSH and remote
+NVTO is a remote work machine. It is not a VPN or a proxy, and Connect forwards nothing except SSH and remote
 desktop to a machine you are renting.
 
 ## Status
@@ -43,7 +43,7 @@ download and upload for at most ten seconds, and prints the platform's rating (s
 runs it when the website opens `nodeex-connect://test?reservation=RESERVATION_ID`. A test is free and moves at most
 what its ticket allows (10 MB each way).
 
-Every command and flag is described in the [Connect reference](https://nodeex.com/docs/reference/connect-cli).
+Every command and flag is described in the [Connect reference](https://nvto.com/docs/reference/connect-cli).
 
 ## How it connects
 
@@ -52,16 +52,16 @@ directly where the two networks allow it and through an encrypted relay where th
 connection only if it presents a lease token signed by the platform; Connect fetches a fresh token for each
 connection, tokens last 10 minutes, and access ends when the lease does.
 
-`login` signs in through your browser: it prints a short code and opens app.nodeex.com, where you check the
+`login` signs in through your browser: it prints a short code and opens app.nvto.com, where you check the
 code and approve it. Connect never sees your password, so a counterfeit copy has none to take. Approve only a code
 you have just started yourself. Add `-no-browser` to print the address instead of opening it (to approve on another
 device). On a computer with no browser, `login -email you@example.com` asks for the password in the terminal (or
 reads `$NODEEX_PASSWORD`) and never stores it. Either way `login` keeps a session token in your user configuration
 directory.
 
-Official builds are published only on this repository's releases page and on https://nodeex.com/download. The
-macOS builds are signed with NodeEx's Developer ID (team ID `7GS265YM4T`) and notarized by Apple; every release has a
-`SHA256SUMS` file. See [how to check a download](https://nodeex.com/security#software).
+Official builds are published only on this repository's releases page and on https://nvto.com/download. The
+macOS builds are signed with NVTO's Developer ID (team ID `7GS265YM4T`) and notarized by Apple; every release has a
+`SHA256SUMS` file. See [how to check a download](https://nvto.com/security#software).
 
 The gate, lease token, overlay and tunnel code is shared with the node side and lives in
 [nodeexhq/miner](https://github.com/nodeexhq/miner).

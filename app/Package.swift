@@ -3,7 +3,7 @@ import PackageDescription
 
 // The macOS app around Connect: a menu-bar program that runs the Go core
 // (cmd/nodeex-connect) and opens a rented Mac's remote desktop or a terminal
-// on it, from the menu or from a link on the NodeEx website.
+// on it, from the menu or from a link on the NVTO website.
 let package = Package(
     name: "NodeExConnect",
     platforms: [.macOS(.v13)],

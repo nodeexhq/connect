@@ -227,8 +227,8 @@ func checkLease(ctx context.Context, s session, dir, leaseID string, port int) {
 	if res.Refunded {
 		// The platform ends such a lease and refunds it in full by itself;
 		// the lease-ended check disconnects shortly after.
-		log.Printf("  NodeEx has ended the lease and refunded its rent in full (%s) to your balance.", res.Refund)
+		log.Printf("  NVTO has ended the lease and refunded its rent in full (%s) to your balance.", res.Refund)
 		return
 	}
-	log.Printf("  NodeEx has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on.")
+	log.Printf("  NVTO has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on.")
 }

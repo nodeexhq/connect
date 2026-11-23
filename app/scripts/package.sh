@@ -22,7 +22,7 @@ cp -R "$DIST/NodeEx Connect.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 DMG="$DIST/NodeEx-Connect-$VERSION.dmg"
 [ ! -f "$DMG" ] || mv "$DMG" "$DIST/.old-$(date +%s).dmg"
-hdiutil create -quiet -volname "NodeEx Connect" -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG"
+hdiutil create -quiet -volname "NVTO Connect" -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG"
 codesign --force --timestamp -s "$SIGN_IDENTITY" "$DMG"
 
 echo "notarizing $(basename "$DMG")"

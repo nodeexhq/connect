@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a nodeex-connect:// link asks for. The NodeEx console links to
+/// What a nodeex-connect:// link asks for. The NVTO console links to
 /// nodeex-connect://open?lease=<id>&mode=desktop (or ssh), and the order page
 /// to nodeex-connect://test?reservation=<id> for the connection test before
 /// an order; any web page could open such a link, so it can only ever reach

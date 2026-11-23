@@ -4,7 +4,7 @@ import Sparkle
 import SwiftUI
 
 // The menu-bar app. A renter clicks "Remote desktop" or "Terminal" next to a
-// lease on the NodeEx website, or picks the lease from this menu; the app
+// lease on the NVTO website, or picks the lease from this menu; the app
 // signs in through the browser if it has to, runs the Go core to reach the
 // machine, and opens Screen Sharing or Terminal on it. Before an order, the
 // website's "Test the connection" opens nodeex-connect://test?reservation=…,
@@ -82,7 +82,7 @@ final class ConnectModel: ObservableObject {
         return base.appendingPathComponent("NodeEx/connect-app", isDirectory: true)
     }
 
-    var apiOrigin: String { ProcessInfo.processInfo.environment["NODEEX_API"] ?? "https://app.nodeex.com" }
+    var apiOrigin: String { ProcessInfo.processInfo.environment["NODEEX_API"] ?? "https://app.nvto.com" }
 
     func start() {
         updates.start(model: self)
@@ -294,8 +294,8 @@ final class ConnectModel: ObservableObject {
                     self.alert("This machine does not match what you ordered",
                                problems.map { "• " + $0 }.joined(separator: "\n")
                                + (e.refunded == true
-                                  ? "\n\nNodeEx has ended the lease and refunded its rent in full" + (e.refund.map { " (\($0))" } ?? "") + " to your balance."
-                                  : "\n\nNodeEx has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on."))
+                                  ? "\n\nNVTO has ended the lease and refunded its rent in full" + (e.refund.map { " (\($0))" } ?? "") + " to your balance."
+                                  : "\n\nNVTO has been told. An automatic refund applies only to a mismatch found in a new lease's first hour, at most twice in 30 days; this lease goes on."))
                 }
             case "path":
                 if e.direct == true {
@@ -408,20 +408,20 @@ struct SignInView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("Sign in to NodeEx").font(.title2.bold())
+            Text("Sign in to NVTO").font(.title2.bold())
             switch model.signIn {
             case .idle, .starting:
                 ProgressView()
                 Text("Opening your browser…").foregroundStyle(.secondary)
             case .waiting(let code, let url):
-                Text("Your browser has opened app.nodeex.com. Approve the sign-in there if the page shows this code:")
+                Text("Your browser has opened app.nvto.com. Approve the sign-in there if the page shows this code:")
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(code)
                     .font(.system(size: 30, weight: .semibold, design: .monospaced))
                     .tracking(3)
                     .textSelection(.enabled)
-                Text("NodeEx Connect never asks for your password.").font(.footnote).foregroundStyle(.secondary)
+                Text("NVTO Connect never asks for your password.").font(.footnote).foregroundStyle(.secondary)
                 HStack {
                     Button("Open the page again") { NSWorkspace.shared.open(url) }
                     Button("Cancel") { model.cancelSignIn() }
@@ -523,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MainActor.assumeIsolated {
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             updateIcon()
-            statusItem.button?.setAccessibilityLabel("NodeEx Connect")
+            statusItem.button?.setAccessibilityLabel("NVTO Connect")
             let menu = NSMenu()
             menu.delegate = self
             statusItem.menu = menu
@@ -538,13 +538,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DispatchQueue.main.async { self?.showTest(state) }
             }
             if model.cli == nil {
-                model.alert("NodeEx Connect is damaged", "The nodeex-connect program was not found inside the app. Download the app again from nodeex.com/download.")
+                model.alert("NVTO Connect is damaged", "The nodeex-connect program was not found inside the app. Download the app again from nvto.com/download.")
             }
             model.start()
         }
     }
 
-    /// Links from the NodeEx website: nodeex-connect://open?lease=…&mode=….
+    /// Links from the NVTO website: nodeex-connect://open?lease=…&mode=….
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             for url in urls {
@@ -564,7 +564,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @MainActor private func updateIcon() {
-        // The NodeEx mark, with a dot while a connection is open.
+        // The NVTO mark, with a dot while a connection is open.
         statusItem.button?.image = MenuBarMark.image(badge: model.hasConnections ? .dot : .none)
     }
 
@@ -576,7 +576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if signInWindow == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SignInView(model: model)))
-            w.title = "NodeEx Connect"
+            w.title = "NVTO Connect"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -600,7 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if testWindow == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: TestView(model: model)))
-            w.title = "NodeEx Connect"
+            w.title = "NVTO Connect"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -634,7 +634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         // The version, so a renter can see an update arrive.
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development build"
-        menu.addItem(disabled("NodeEx Connect \(version)"))
+        menu.addItem(disabled("NVTO Connect \(version)"))
         menu.addItem(.separator())
         if let status = model.status, status.signedIn {
             menu.addItem(disabled("Signed in as \(status.email ?? "your account")"))
@@ -653,7 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             menu.addItem(.separator())
         }
-        menu.addItem(item("Open the NodeEx console") { [weak self] in self?.openWeb("/console") })
+        menu.addItem(item("Open the NVTO console") { [weak self] in self?.openWeb("/console") })
         if model.updates.available {
             menu.addItem(item("Check for updates…") { [weak self] in self?.model.updates.check() })
         }
@@ -661,7 +661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item("Sign out") { [weak self] in self?.model.signOut() })
         }
         menu.addItem(.separator())
-        menu.addItem(item("Quit NodeEx Connect") { NSApp.terminate(nil) })
+        menu.addItem(item("Quit NVTO Connect") { NSApp.terminate(nil) })
     }
 
     @MainActor private func leaseItem(_ lease: Lease) -> NSMenuItem {

@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// The NodeEx Connect app runs this program and reads what it does from
+// The NVTO Connect app runs this program and reads what it does from
 // standard output, one JSON object per line, when it is given -events. The
 // human-readable messages still go to standard error.
 var (

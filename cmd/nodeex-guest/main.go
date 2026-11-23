@@ -1,6 +1,6 @@
 //go:build darwin
 
-// nodeex-guest is the small program NodeEx Connect copies into a rented
+// nodeex-guest is the small program NVTO Connect copies into a rented
 // machine to check it. It runs only Go and the system calls below, not the
 // machine's own command-line tools, so replacing those tools changes
 // nothing. Every timed job it does is checked by Connect against answers it

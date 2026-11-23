@@ -151,7 +151,7 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 		return testResult{}, err
 	}
 	defer os.RemoveAll(stateDir)
-	log.Printf("joining the NodeEx network")
+	log.Printf("joining the NVTO network")
 	jctx, jcancel := context.WithTimeout(ctx, time.Minute)
 	ov, err := join(jctx, overlay.Config{
 		ControlURL: t.ControlURL, AuthKey: t.AuthKey,
@@ -162,7 +162,7 @@ func runTest(ctx context.Context, s session, id string, join joinFunc) (testResu
 		if ctx.Err() != nil {
 			return testResult{}, ctx.Err()
 		}
-		return testResult{}, fmt.Errorf("could not join the NodeEx network: %w", err)
+		return testResult{}, fmt.Errorf("could not join the NVTO network: %w", err)
 	}
 	defer ov.close()
 
