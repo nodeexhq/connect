@@ -53,5 +53,5 @@ require (
 	tailscale.com v1.104.7 // indirect
 )
 
-// TEMP until github.com/nvtohq/node is published; see deploy/README.md section 六
+// TEMP until github.com/nvtohq/node is published: then drop this line and require its release tag
 replace github.com/nvtohq/node => ../miner
