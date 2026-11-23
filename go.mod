@@ -3,7 +3,7 @@ module github.com/nvtohq/connect
 go 1.27.4
 
 require (
-	github.com/nvtohq/node v0.0.0
+	github.com/nvtohq/node v0.1.17-test.4.0.20261123052525-67a23c0c9ce7
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
@@ -52,6 +52,3 @@ require (
 	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72 // indirect
 	tailscale.com v1.104.7 // indirect
 )
-
-// TEMP until github.com/nvtohq/node is published: then drop this line and require its release tag
-replace github.com/nvtohq/node => ../miner
