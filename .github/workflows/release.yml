@@ -71,7 +71,10 @@ jobs:
 
       - name: Publish
         run: |
-          gh release create "$TAG" dist/* --prerelease --title "NVTO Connect $TAG" \
+          # A test build (a tag with a suffix) is a pre-release and is never shown
+          # as the download; a plain tag is the release everyone gets.
+          case "$TAG" in *-*) KIND=--prerelease ;; *) KIND=--latest ;; esac
+          gh release create "$TAG" dist/* $KIND --title "NVTO Connect $TAG" \
             --notes "NVTO Connect for macOS (the app, for Apple silicon and Intel) and the command-line client for macOS, Windows and Linux. The macOS builds are signed with a Developer ID and notarized by Apple. Windows and Linux builds are unsigned, and the Windows builds are untested on real hardware. Verify downloads against the checksums."
 
       - name: The app, for a test build
