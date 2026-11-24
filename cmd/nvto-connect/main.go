@@ -2,8 +2,7 @@
 // opens a leased machine's SSH and remote desktop on local ports, and tests
 // the connection to a reserved machine before it is ordered.
 //
-//	nvto-connect login [-no-browser]       (approve in the browser)
-//	nvto-connect login -email EMAIL        (password, for machines without a browser)
+//	nvto-connect login [-no-browser]       (approve in a browser, on any device)
 //	nvto-connect leases
 //	nvto-connect open LEASE_ID [-ssh-port 10022] [-vnc-port 15900] [-open-vnc]
 //	nvto-connect test RESERVATION_ID [-events]
@@ -33,7 +32,6 @@ import (
 	"github.com/nvtohq/node/leasetoken"
 	"github.com/nvtohq/node/overlay"
 	"github.com/nvtohq/node/tunnel"
-	"golang.org/x/term"
 )
 
 type session struct {
@@ -167,7 +165,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: nvto-connect <login|logout|status|leases|open|test|version> [flags]")
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "  login [-no-browser] [-email EMAIL]   sign in")
+	fmt.Fprintln(os.Stderr, "  login [-no-browser]                  sign in through a browser, on any device")
 	fmt.Fprintln(os.Stderr, "  logout                               sign out")
 	fmt.Fprintln(os.Stderr, "  status [-json]                       whether this computer is signed in")
 	fmt.Fprintln(os.Stderr, "  leases [-json]                       list your leases")
@@ -181,59 +179,33 @@ func usage() {
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	api := fs.String("api", envOr("NVTO_API", defaultAPI), "platform API URL (or $NVTO_API)")
-	email := fs.String("email", "", "sign in with email and password instead of the browser")
+	// -email used to sign in with a password. The platform now asks for a
+	// human check on password sign-in that a terminal cannot give, so it is
+	// gone; the flag is still accepted for a release so old scripts get a
+	// clear message and the browser sign-in instead of a flag error.
+	email := fs.String("email", "", "removed: sign in through the browser instead")
 	noBrowser := fs.Bool("no-browser", false, "print the sign-in address instead of opening a browser")
 	dir := fs.String("dir", defaultDir(), "state directory")
 	fs.BoolVar(&eventsOn, "events", false, "write progress as JSON lines on standard output, for the app")
 	fs.Parse(args)
 	if *api == "" {
-		return errors.New("usage: nvto-connect login [-no-browser] [-email YOU@EXAMPLE.COM]")
+		return errors.New("usage: nvto-connect login [-no-browser]")
 	}
-	var token string
-	if *email == "" {
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
-		t, err := browserLogin(ctx, *api, *noBrowser)
-		if err != nil {
-			return err
-		}
-		token = t
-	} else {
-		t, err := passwordLogin(*api, *email)
-		if err != nil {
-			return err
-		}
-		token = t
+	if *email != "" {
+		fmt.Fprintln(os.Stderr, "nvto-connect: -email (password sign-in) was removed: sign in through the browser instead. "+
+			"Run `nvto-connect login` (add -no-browser on a machine without one) and approve the code from any device.")
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	token, err := browserLogin(ctx, *api, *noBrowser)
+	if err != nil {
+		return err
 	}
 	if err := saveSession(*dir, session{API: *api, Token: token}); err != nil {
 		return err
 	}
 	emit("signed_in", nil)
 	return nil
-}
-
-// passwordLogin is for a computer with no browser at hand. The password
-// comes from the terminal or $NVTO_PASSWORD, never a flag, so it stays
-// out of shell history and process listings.
-func passwordLogin(api, email string) (string, error) {
-	password := os.Getenv("NVTO_PASSWORD")
-	if password == "" {
-		fmt.Fprint(os.Stderr, "password: ")
-		b, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
-		if err != nil {
-			return "", err
-		}
-		password = string(b)
-	}
-	var res struct {
-		Token string `json:"token"`
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	err := call(ctx, session{API: api}, "POST", "/v1/auth/login",
-		map[string]string{"email": email, "password": password}, &res)
-	return res.Token, err
 }
 
 func saveSession(dir string, s session) error {

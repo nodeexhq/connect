@@ -54,10 +54,10 @@ connection, tokens last 10 minutes, and access ends when the lease does.
 
 `login` signs in through your browser: it prints a short code and opens app.nvto.com, where you check the
 code and approve it. Connect never sees your password, so a counterfeit copy has none to take. Approve only a code
-you have just started yourself. Add `-no-browser` to print the address instead of opening it (to approve on another
-device). On a computer with no browser, `login -email you@example.com` asks for the password in the terminal (or
-reads `$NVTO_PASSWORD`) and never stores it. Either way `login` keeps a session token in your user configuration
-directory.
+you have just started yourself. This is the only way to sign in. On a computer with no browser, run
+`login -no-browser`: it prints the address and the code instead of opening a browser, and you open that address on
+any device (your phone, your laptop), sign in there and enter the code. `login` then keeps a session token in your
+user configuration directory.
 
 Official builds are published only on this repository's releases page and on https://nvto.com/download. The
 macOS builds are signed with NVTO's Developer ID (team ID `7GS265YM4T`) and notarized by Apple; every release has a
