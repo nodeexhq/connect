@@ -7,12 +7,12 @@
   <channel>
     <title>NVTO Connect</title>
     <item>
-      <title>0.1.11</title>
-      <pubDate>Mon, 23 Nov 2026 21:00:54 +0000</pubDate>
-      <sparkle:version>47</sparkle:version>
-      <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
+      <title>0.1.12</title>
+      <pubDate>Tue, 24 Nov 2026 17:27:53 +0000</pubDate>
+      <sparkle:version>51</sparkle:version>
+      <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/nvtohq/connect/releases/download/v0.1.11/NVTO-Connect-v0.1.11.dmg" type="application/octet-stream" sparkle:edSignature="LNtzzVbSgMdOXoM+na2cDioewr7cBK8iLxKVYYh16F4ACLszsJuTCCQYHDtQq177KYBGUXV31IYHNl/q/kryCA==" length="24884515" />
+      <enclosure url="https://github.com/nvtohq/connect/releases/download/v0.1.12/NVTO-Connect-v0.1.12.dmg" type="application/octet-stream" sparkle:edSignature="RrCKluXRQ4tlLiJbxnb+cowP7vKUOOXmoNS1b3DNrWNDqqBasgh8NBKJY81+zdC8yLMZxRW4yX0Zlx25fp77CQ==" length="24880347" />
     </item>
   </channel>
 </rss>
