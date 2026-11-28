@@ -58,7 +58,12 @@ func TestCheckCommandsOnThisMac(t *testing.T) {
 // whole check runs end to end over a real SSH connection.
 func shellSSHServer(t *testing.T) *ssh.Client {
 	t.Helper()
-	home := t.TempDir()
+	return shellSSHServerIn(t, t.TempDir())
+}
+
+// shellSSHServerIn is shellSSHServer with home as the account's home.
+func shellSSHServerIn(t *testing.T, home string) *ssh.Client {
+	t.Helper()
 	_, hostPriv, _ := ed25519.GenerateKey(rand.Reader)
 	hostSigner, _ := ssh.NewSignerFromKey(hostPriv)
 	cfg := &ssh.ServerConfig{NoClientAuth: true}

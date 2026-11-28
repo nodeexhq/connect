@@ -424,6 +424,8 @@ func cmdOpen(args []string) error {
 	// Set once the lease's private folder has been unlocked, so that it is
 	// unlocked again if the machine restarts while connected.
 	privateReady := false
+	// The password of the desktop the node serves itself, if it does.
+	desktopPassword := ""
 	emit("listening", map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort})
 	log.Printf("ready; leave this running while you use the machine, and press Ctrl+C to disconnect")
 	if !registered {
@@ -434,11 +436,18 @@ func cmdOpen(args []string) error {
 		// The node installs the key with its next heartbeat, so the machine
 		// takes a moment to let it in.
 		log.Printf("  waiting for the machine to accept this computer's key")
-		password, err := prepareMachine(ctx, *dir, leaseID, *sshPort, 90*time.Second)
+		secrets, err := prepareMachine(ctx, *dir, leaseID, *sshPort, 90*time.Second)
 		ready := map[string]any{"ssh_port": *sshPort, "vnc_port": *vncPort, "ssh_key": sshKeyPath(*dir)}
 		private, privateErr := "", error(nil)
 		if err == nil {
-			ready["account"], ready["password"] = machineAccount, password
+			// password is the account's; desktop_password, when the node
+			// serves the desktop itself, is the one the desktop asks for.
+			// Without it the account's password is the desktop's too.
+			ready["account"], ready["password"] = machineAccount, secrets.AccountPassword
+			if secrets.DesktopPassword != "" {
+				ready["desktop_password"] = secrets.DesktopPassword
+				desktopPassword = secrets.DesktopPassword
+			}
 			// A name in ~/.ssh for terminals and editors (VS Code, Cursor,
 			// JetBrains Gateway). Best effort: without it, the port works.
 			if !*noSSHConfig {
@@ -478,8 +487,14 @@ func cmdOpen(args []string) error {
 			} else {
 				log.Printf("  ssh:             ssh -i %s -p %d %s@127.0.0.1", sshKeyPath(*dir), *sshPort, machineAccount)
 			}
-			log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
-			log.Printf("                   user %s, password %s", machineAccount, password)
+			if secrets.DesktopPassword != "" {
+				log.Printf("  remote desktop:  %s, password %s", desktopHint("127.0.0.1", *vncPort), shown(secrets.DesktopPassword))
+				log.Printf("                   the machine logs the account %s in by itself", machineAccount)
+				log.Printf("  account:         %s, password %s (System Settings, installers and the login window ask for it)", machineAccount, shown(secrets.AccountPassword))
+			} else {
+				log.Printf("  remote desktop:  %s", desktopHint("127.0.0.1", *vncPort))
+				log.Printf("                   user %s, password %s", machineAccount, shown(secrets.AccountPassword))
+			}
 			if privateErr == nil {
 				log.Printf("  private folder:  %s, an encrypted volume only this computer can unlock; it is locked whenever the machine stops", private)
 			} else {
@@ -498,7 +513,7 @@ func cmdOpen(args []string) error {
 		}
 	}
 	if *openVNC {
-		if err := openDesktop(ctx, "127.0.0.1", *vncPort); err != nil {
+		if err := openDesktop(ctx, "127.0.0.1", *vncPort, desktopPassword); err != nil {
 			log.Printf("could not open the remote desktop: %v", err)
 		}
 	}
@@ -555,6 +570,17 @@ func cmdOpen(args []string) error {
 	wg.Wait()
 	emit("closed", nil)
 	return nil
+}
+
+// shown is a password as Connect prints it. The renter running Connect in
+// a terminal needs to see it; standard error that goes anywhere else (a
+// file, a pipe, the app, which discards it) may be kept as a log, and
+// passwords are never logged.
+func shown(password string) string {
+	if fi, err := os.Stderr.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		return password
+	}
+	return "(not shown: standard error is not a terminal)"
 }
 
 // leaseEnded asks the platform whether the lease is over. known is false
