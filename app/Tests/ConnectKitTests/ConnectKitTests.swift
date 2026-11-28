@@ -23,6 +23,10 @@ final class ConnectKitTests: XCTestCase {
         XCTAssertEqual(e?.event, "ready")
         XCTAssertEqual(e?.sshPort, 50022)
         XCTAssertEqual(e?.password, "p w")
+        XCTAssertNil(e?.desktopPassword)
+        let d = CoreEvent.parse(#"{"event":"ready","vnc_port":50059,"account":"renter","password":"abcde-fghjk","desktop_password":"Ab3dEf7h"}"#)
+        XCTAssertEqual(d?.desktopPassword, "Ab3dEf7h")
+        XCTAssertEqual(d?.password, "abcde-fghjk")
         XCTAssertNil(CoreEvent.parse("not json"))
         let c = CoreEvent.parse(#"{"event":"check","verdict":"mismatch","problems":["8 GB of memory, the node claims 12 GB"]}"#)
         XCTAssertEqual(c?.verdict, "mismatch")
@@ -38,6 +42,17 @@ final class ConnectKitTests: XCTestCase {
         XCTAssertEqual(URLComponents(url: u, resolvingAgainstBaseURL: false)?.password, "a b/c@d")
         XCTAssertFalse(u.absoluteString.contains("a b"))
         XCTAssertNil(Handoff.desktopURL(port: 1, account: nil, password: nil).user)
+    }
+
+    /// A desktop the node serves: its own password, and no account (that
+    /// server asks for none, and the account's password must not go there).
+    func testHostDesktopURL() {
+        let u = Handoff.desktopURL(port: 50059, account: "renter", password: "abcde-fghjk", desktopPassword: "Ab3dEf7h")
+        XCTAssertEqual(u.absoluteString, "vnc://:Ab3dEf7h@127.0.0.1:50059")
+        XCTAssertEqual(URLComponents(url: u, resolvingAgainstBaseURL: false)?.password, "Ab3dEf7h")
+        XCTAssertFalse(u.absoluteString.contains("abcde"))
+        // An empty desktop password is no password: the older way.
+        XCTAssertEqual(Handoff.desktopURL(port: 1, account: "renter", password: "p", desktopPassword: "").user, "renter")
     }
 
     func testSSHCommandFile() throws {

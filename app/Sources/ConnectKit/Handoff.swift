@@ -3,14 +3,20 @@ import Foundation
 /// Hands a connection to the apps macOS already has: Screen Sharing for the
 /// desktop, Terminal for SSH.
 public enum Handoff {
-    /// A vnc:// address for Screen Sharing. With the account and password
-    /// in it, Screen Sharing signs in without asking.
-    public static func desktopURL(port: Int, account: String?, password: String?) -> URL {
+    /// A vnc:// address for Screen Sharing, which signs in without asking
+    /// with what is in it. A desktop the node serves asks only for its own
+    /// password (desktopPassword), so the address names no account; on an
+    /// older node the guest's Screen Sharing asks for the account and its
+    /// password.
+    public static func desktopURL(port: Int, account: String?, password: String?, desktopPassword: String? = nil) -> URL {
         var c = URLComponents()
         c.scheme = "vnc"
         c.host = "127.0.0.1"
         c.port = port
-        if let account, let password, !account.isEmpty, !password.isEmpty {
+        if let desktopPassword, !desktopPassword.isEmpty {
+            c.user = ""
+            c.password = desktopPassword
+        } else if let account, let password, !account.isEmpty, !password.isEmpty {
             c.user = account
             c.password = password
         }

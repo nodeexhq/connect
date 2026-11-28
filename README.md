@@ -37,6 +37,16 @@ While `open` runs, the machine is reachable at:
 - SSH: `ssh -p 10022 <user>@127.0.0.1`
 - Remote desktop: `vnc://127.0.0.1:15900` (macOS Screen Sharing; on Windows and Linux, a VNC viewer you install)
 
+The node serves the machine's screen from outside the machine, and the machine logs its account (`renter`) in by
+itself, so the remote desktop opens on the desktop. It asks for its own password, which the node makes for each
+machine and leaves in the account; Connect reads it over SSH on every connection, puts it in the link it opens on
+macOS (`-open-vnc`, or "Open remote desktop" in the Mac app), and otherwise prints it for you to give your viewer.
+The account's own password, which System Settings, installers and the login window ask for, is printed beside it.
+Connect prints passwords only to a terminal, never to a log. With an older node, the remote desktop is the machine's
+own Screen Sharing, which asks for the account's name and password, and Connect sets that password as before.
+Keep Connect up to date: an older Connect gives a current node's remote desktop the wrong password, and changes the
+account's password, which stops the machine logging in by itself after a restart.
+
 Before you order, the website can reserve a machine and have Connect test the connection to it:
 `nvto-connect test RESERVATION_ID` reaches the reserved machine the way a lease would, measures latency, jitter,
 download and upload for at most ten seconds, and prints the platform's rating (smooth, ok or may lag). The Mac app

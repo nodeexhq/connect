@@ -9,7 +9,12 @@ public struct CoreEvent: Decodable, Equatable {
     public var sshPort: Int?
     public var vncPort: Int?
     public var account: String?
+    /// The account's password. Without desktopPassword it is also the
+    /// remote desktop's (the guest's own Screen Sharing asks for it).
     public var password: String?
+    /// The password of the remote desktop the node serves from outside the
+    /// machine, which logs the account in by itself. Absent on older nodes.
+    public var desktopPassword: String?
     public var sshKey: String?
     /// The machine's name in ~/.ssh/config while connected (nvto-<lease>).
     public var sshHost: String?
@@ -42,7 +47,7 @@ public struct CoreEvent: Decodable, Equatable {
         case userCode = "user_code", verificationURL = "verification_url", expiresIn = "expires_in"
         case sshPort = "ssh_port", vncPort = "vnc_port", sshKey = "ssh_key", latencyMs = "latency_ms"
         case jitterMs = "jitter_ms", downMbps = "down_mbps", upMbps = "up_mbps"
-        case privateFolder = "private", privateNote = "private_note", sshHost = "ssh_host"
+        case privateFolder = "private", privateNote = "private_note", sshHost = "ssh_host", desktopPassword = "desktop_password"
     }
 
     public static func parse(_ line: String) -> CoreEvent? {

@@ -279,7 +279,8 @@ final class ConnectModel: ObservableObject {
                     self.alert("This Mac belongs to someone else",
                                "It sits in its owner's home or office, and the owner can reach the hardware. "
                                + "Keep files and keys that matter in ~/Private: an encrypted folder only this computer can unlock, "
-                               + "locked whenever the machine stops. Use short-lived, limited credentials, and keep your own "
+                               + "locked whenever the machine stops. Not in the machine's keychain: the machine logs you in by itself, "
+                               + "so its owner could open that. Use short-lived, limited credentials, and keep your own "
                                + "backups: if the node goes offline, what is on it may be out of reach until it returns.")
                 }
                 let modes = c.pending
@@ -328,7 +329,7 @@ final class ConnectModel: ObservableObject {
         switch mode {
         case .desktop:
             guard let port = r.vncPort else { return }
-            NSWorkspace.shared.open(Handoff.desktopURL(port: port, account: r.account, password: r.password))
+            NSWorkspace.shared.open(Handoff.desktopURL(port: port, account: r.account, password: r.password, desktopPassword: r.desktopPassword))
         case .ssh:
             guard let port = r.sshPort else { return }
             do {
@@ -346,9 +347,17 @@ final class ConnectModel: ObservableObject {
     }
 
     func copyPassword(_ lease: String) {
-        guard let pw = connections[lease]?.ready?.password else { return }
+        copy(connections[lease]?.ready?.password)
+    }
+
+    func copyDesktopPassword(_ lease: String) {
+        copy(connections[lease]?.ready?.desktopPassword)
+    }
+
+    private func copy(_ secret: String?) {
+        guard let secret else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(pw, forType: .string)
+        NSPasteboard.general.setString(secret, forType: .string)
     }
 
     func disconnectAll() {
@@ -696,7 +705,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // The encrypted folder only this computer can unlock.
                 if let folder = r.privateFolder { sub.addItem(disabled("Private folder: \(folder) (encrypted)")) }
                 else if r.privateNote != nil { sub.addItem(disabled("Private folder: not available")) }
-                if r.password != nil {
+                if r.desktopPassword != nil {
+                    // The node serves the desktop and logs the account in:
+                    // "Open remote desktop" needs no password. The desktop's
+                    // is for other viewers; the account's is what System
+                    // Settings, installers and the login window ask for.
+                    sub.addItem(item("Copy remote desktop password") { [weak self] in self?.model.copyDesktopPassword(lease.id) })
+                    if r.password != nil {
+                        sub.addItem(item("Copy account password (for System Settings)") { [weak self] in self?.model.copyPassword(lease.id) })
+                    }
+                } else if r.password != nil {
+                    // An older node: the account's password is also the
+                    // desktop's.
                     sub.addItem(item("Copy desktop password") { [weak self] in self?.model.copyPassword(lease.id) })
                 }
             }
